@@ -46,20 +46,22 @@ constexpr const char* SYSTEM    = color::GOLD;    // 系统
 }
 
 // ---- 打字机速度（每字延迟，微秒）----
-constexpr int TYPE_DELAY_US = 16000;   // 16ms/字
+// 慢慢吐字：55ms/字 ≈ 一秒 18 个字，是能跟着读的节奏。
+// 想再慢一点可以在「设置 → 文字速度」里调到「慢」，那里是 100ms/字。
+constexpr int TYPE_DELAY_US = 55000;   // 55ms/字
 
 // ---- 存档 ----
 constexpr const char* SAVE_DIR   = "saves";
 constexpr int        SAVE_SLOTS  = 6;
 
 // ---- 探索地图 ----
-// 玩家标记用全角字符「＠」（占 2 列），与地图上其它全角格子对齐，避免抖动。
-constexpr const char* MAP_PLAYER_CHAR = "\xEF\xBC\xA0";   // 全角＠ (U+FF20)
-// 地图上的「别人」用一个字代表自己：四不遇 = 遇，四不相 = 相，上司 = 司。
+// 地图上「一个人一个字」代表自己：四不相 = 相，四不遇 = 遇，上司 = 司。
 // 一律用汉字（不是 ◆ ● 这类半角符号）：汉字占 2 列，和地图格子严格对齐，
 // 否则一行会短一列，整个方框就歪了。
-constexpr const char* MAP_ACTOR_SIBUYU   = "\xE9\x81\x87";   // 遇
-constexpr const char* MAP_ACTOR_SIBUXIANG = "\xE7\x9B\xB8";  // 相
+constexpr const char* MAP_ACTOR_SIBUYU    = "\xE9\x81\x87";   // 遇
+constexpr const char* MAP_ACTOR_SIBUXIANG = "\xE7\x9B\xB8";   // 相
+// 玩家标记也用汉字「相」——四不相就是玩家本人，占 2 列，与其它格子严格对齐。
+constexpr const char* MAP_PLAYER_CHAR     = "\xE7\x9B\xB8";   // 相
 
 // ---- 配图资源目录（预留，接 SDL2 等图形后端时使用）----
 constexpr const char* ASSET_IMAGE_DIR = "assets/images";

@@ -5,6 +5,7 @@
 
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "config.h"
@@ -15,6 +16,18 @@
 #include "status.h"
 
 namespace game {
+
+// 供自动化测试驱动地图循环用的输入注入（正常游戏里恒为 null）。
+// 返回 {键值, 是否鼠标点击}；返回 KEY_NONE 表示"这一拍没有输入"。
+struct MapInputHook {
+    virtual ~MapInputHook() {}
+    virtual std::pair<int, bool> poll() = 0;
+    // 每画完一帧调用一次：frame = 帧序号，lines = 这一帧的全部文本行
+    virtual void onFrame(int frame, const std::vector<std::string>& lines) = 0;
+    // 循环自然结束（角色演完 / 触发剧情离开）时调用
+    virtual void onEnd() = 0;
+};
+extern MapInputHook* g_mapInputHook;
 
 class Game {
 public:
@@ -32,6 +45,11 @@ private:
     Map map_;
     Roster roster_;                             // 角色档案（等级/种族/HP/MP/TP/属性）
     bool quitting_ = false;
+
+    // 供测试注入：这一帧画出的文本行
+    std::vector<std::string> frameLines_;
+    void beginFrame();
+    void endFrame();
 
     std::string currentChapter_ = "序章";
     std::string currentScene_ = "";

@@ -65,6 +65,15 @@ public:
     static int textSpeed();                 // 当前档位
     static void setTextSpeed(int level);    // 设置档位（自动夹到 0..3）
     static int speedDelayUs();              // 当前档位对应的每字延迟(微秒)，0 表示立即
+
+    // ---- 屏幕内容抓取（只给自动化测试用）----
+    // captureBegin 之后所有输出同时记进内存，captureEnd 取走按行切分的文本。
+    void captureBegin();
+    void captureEnd(std::vector<std::string>& lines);
+
+private:
+    bool capturing_ = false;
+    std::string captureBuf_;
 };
 
 }  // namespace game

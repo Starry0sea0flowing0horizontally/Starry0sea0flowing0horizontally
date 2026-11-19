@@ -222,6 +222,11 @@ bool SaveManager::save(int slot, const SaveData& data) {
     f << "version " << SAVE_FORMAT_VERSION << "\n";
     f << "chapter " << sanitizeValue(data.chapter) << "\n";
     f << "pc " << data.pc << "\n";
+    // 读档锚点：label 名 + 偏移（旧版本没有这行，读不到就退回裸 pc）
+    if (!data.resumeLabel.empty()) {
+        f << "resume " << sanitizeValue(data.resumeLabel) << " "
+          << data.resumeOffset << "\n";
+    }
     f << "scene " << sanitizeValue(data.sceneTitle) << "\n";
     f << "timestamp " << sanitizeValue(data.timestamp.empty() ? nowString() : data.timestamp) << "\n";
     for (Flags::const_iterator it = data.flags.begin(); it != data.flags.end(); ++it) {
@@ -255,6 +260,14 @@ bool SaveManager::load(int slot, SaveData& out) const {
         } else if (line.compare(0, 3, "pc ") == 0) {
             std::size_t v = 0;
             if (parsePc(line.substr(3), v)) out.pc = v;
+        } else if (line.compare(0, 7, "resume ") == 0) {
+            std::string v = line.substr(7);
+            std::string::size_type sp = v.rfind(' ');
+            if (sp != std::string::npos && sp > 0) {
+                out.resumeLabel = v.substr(0, sp);
+                std::size_t off = 0;
+                if (parsePc(v.substr(sp + 1), off)) out.resumeOffset = off;
+            }
         } else if (line.compare(0, 6, "scene ") == 0) {
             out.sceneTitle = line.substr(6);
         } else if (line.compare(0, 10, "timestamp ") == 0) {

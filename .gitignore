@@ -27,7 +27,7 @@
 
 # IDE and editor files
 /.idea/
-/.vscode/*
+/.vscode/
 !/.vscode/tasks.json
 !/.vscode/launch.json
 *.swp

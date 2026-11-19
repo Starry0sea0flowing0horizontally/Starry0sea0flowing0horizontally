@@ -79,12 +79,19 @@ Script buildPrologue() {
 
     // ---- 上床睡觉（主线入口：睡觉 → 门无声开 → 灰白幼崽深夜到访） ----
     b.label("dorm_bed");
+    b.branch("time", "清晨", "morning_bed");
     b.say("四不相", "累死了……终于可以睡觉了……", speaker::SIBUXIANG);
     b.narr("他连外袍都懒得脱，一头栽进那床薄薄的棉絮里。木板「吱呀」响了一声。");
     b.narr("周围落针可闻，只有几缕光从窗缝里透进来。");
     b.narr("那点念头还悬在半空，眼皮已沉得像灌了铅。刚沾到枕头，他就没了声息。");
     b.narr("呼吸渐渐平稳下来，变成均匀的、浅浅的起伏。窗纸破了三个洞，风从洞里灌进来，吹动他肩上的黄色绒毛。");
     b.jump("sushe_night");
+
+    // 清晨再看床：已经天亮了，睡不回去，也不能把深夜那段重演一遍。
+    b.label("morning_bed");
+    b.narr("床上只剩一摊没叠的棉被，枕头还凹着一块。刚才就是从这儿弹起来的。");
+    b.say("四不相", "现在哪有工夫躺回去……要迟到了。", speaker::SIBUXIANG);
+    b.jump("dorm_back");
 
     // ---- 查看桌子 ----
     b.label("dorm_desk");
@@ -210,6 +217,7 @@ Script buildPrologue() {
     b.narr("门缝底下塞着一块卷起来的粗布，把缝堵得严严实实，透不进一丝风。");
     b.choice("要看看这扇门吗？", {
         {"摸一摸门板", "dorm_storeroom_touch"},
+        {"试试能不能弄开", "dorm_storeroom_open"},
         {"算了", "dorm_back"},
     });
 
@@ -222,6 +230,135 @@ Script buildPrologue() {
     b.narr("——不过今晚不是想这个的时候。明天还要早起。");
     b.jump("dorm_back");
 
+    // ---- 杂物房（一整张地图：补给 + 钥匙） ----
+    // 铁环锈死了，但老锁的锁舌已经裂了——用力一拽能崩开。
+    // 进去以后是一间 32×14 的普通杂物间：木架、木箱、旧柜、铜匣。
+    // 这里没有故事、没有账册：只有回血的药、回 TP 的香，和一把要解出来的钥匙。
+    // 里间的门锁着，钥匙在铜匣里；铜匣没有锁孔，只有三个字位，
+    // 刻着一行「花至＿＿，春事了」，按对「荼蘼」的「蘼」才会弹开。
+    b.label("dorm_storeroom_open");
+    b.narr("他两只爪子攥住铁环，整个人往后一坠——「咔」，锁舌里裂掉的老锈崩出来一点。");
+    b.narr("门开了。一股陈年灰尘混着旧木头的味道涌出来，凉得像从地底下冒上来的。");
+    b.say("四不相", "……就、就进去看一眼。看一眼就出来。", speaker::SIBUXIANG);
+    b.jump("storeroom_enter");
+
+    b.label("storeroom_enter");
+    // 出生点传 -1：互动完回到这张图时留在原地，不要把人送回门口。
+    // 第一次进来时 id_ 还是 "dorm"，房间会重建，默认就站在门下（16,12）。
+    b.map("storeroom", -1, -1, {
+        {"杂物间的门", "dorm_back"},
+        {"木架", "storeroom_shelf"},
+        {"木箱", "storeroom_crate"},
+        {"旧柜", "storeroom_cabinet"},
+        {"铜匣", "storeroom_box"},
+        {"里间的门", "storeroom_inner"},
+    });
+
+    // 一间普通的杂物间：没有故事，只有东西——补给，和一把要解出来的钥匙。
+    // 每样东西只能拿一次（拿过记 flag，再来就是空的了）。
+
+    // ---- 木架：药罐 ----
+    b.label("storeroom_shelf");
+    b.branch("storeroom_shelf_got", "1", "storeroom_shelf_empty");
+    b.narr("木架最里层塞着几只没贴签的陶罐。他揭开一只——是药粉，还有半罐子。");
+    b.setFlag("storeroom_shelf_got", "1");
+    b.item("回春散", "粗陶罐里的白药粉。敷上伤口能恢复体力。（HP +40）");
+    b.setFlag("hp_sibuxiang", "100");
+    b.jump("storeroom_enter");
+
+    b.label("storeroom_shelf_empty");
+    b.narr("剩下的罐子都是空的，只有一股陈年的药味。");
+    b.jump("storeroom_enter");
+
+    // ---- 木箱：香 ----
+    b.label("storeroom_crate");
+    b.branch("storeroom_crate_got", "1", "storeroom_crate_empty");
+    b.narr("他掀开箱盖。里面是半箱干草，草里埋着一只油纸包，包着几炷香。");
+    b.setFlag("storeroom_crate_got", "1");
+    b.item("凝神香", "一炷就够静一炷香的时间。点着能收拢散掉的灵力。（TP +30）");
+    b.setFlag("tp_sibuxiang", "30");
+    b.jump("storeroom_enter");
+
+    b.label("storeroom_crate_empty");
+    b.narr("箱子里只剩下干草了。");
+    b.jump("storeroom_enter");
+
+    // ---- 旧柜：柜子里也有 ----
+    b.label("storeroom_cabinet");
+    b.branch("storeroom_cabinet_got", "1", "storeroom_cabinet_empty");
+    b.narr("旧柜的柜门一拉就开，铰链哑哑地响。柜子里分了三层，东西摆得整整齐齐。");
+    b.narr("上层是一小袋蜜渍梅，中层一只扁瓷瓶，下层压着一块干粮。");
+    b.setFlag("storeroom_cabinet_got", "1");
+    b.item("蜜渍梅", "甜得发腻的梅子，含着能压住心慌。（HP +15）");
+    b.setFlag("hp_sibuxiang", "100");
+    b.item("安神汤", "瓷瓶里温着的汤药，一口下去，手脚都不抖了。（TP +20）");
+    b.setFlag("tp_sibuxiang", "30");
+    b.jump("storeroom_enter");
+
+    b.label("storeroom_cabinet_empty");
+    b.narr("柜子空了，只剩下一层薄薄的灰。");
+    b.jump("storeroom_enter");
+
+    // ---- 铜匣：三个字位的字锁（关键道具：铜钥匙） ----
+    b.label("storeroom_box");
+    b.branch("storeroom_key", "已得", "storeroom_box_got");
+    b.narr("一只巴掌大的黄铜匣子，匣面上没有锁孔，只有三个凹进去的字位。匣侧刻着一行小字：");
+    b.narr("「花至＿＿，春事了。」");
+    b.say("四不相", "花至……什么？", speaker::SIBUXIANG);
+    b.choice("要按下哪个字？", {
+        {"荼", "storeroom_box_cha"},
+        {"靡", "storeroom_box_mi"},
+        {"蘼", "storeroom_box_li"},
+    });
+
+    // 按错：字位卡住，弹不动。
+    b.label("storeroom_box_cha");
+    b.narr("他把「荼」按了下去。「嗒」一声，字位陷进去半分，又慢慢弹了回来。");
+    b.say("四不相", "不对……只有一个是按得下去的。", speaker::SIBUXIANG);
+    b.jump("storeroom_box");
+
+    b.label("storeroom_box_mi");
+    b.narr("他把「靡」按了下去。匣子里响了一声，像什么被拧歪了，字位纹丝不动地卡在那儿。");
+    b.say("四不相", "也不是这个。那个「靡」，是靡靡之音的靡……", speaker::SIBUXIANG);
+    b.jump("storeroom_box");
+
+    // 按对：花至荼蘼。开匣，得到铜钥匙。
+    b.label("storeroom_box_li");
+    b.narr("他把「蘼」按了下去。");
+    b.narr("「嗒。」字位到底了。匣子里传来一连串很轻的机括声，一层一层往里退。匣盖弹开。");
+    b.narr("里面铺着一层发黄的丝绒，丝绒上躺着一把小小的铜钥匙。");
+    b.say("四不相", "荼蘼……「花至荼蘼」，是春天要尽了的意思。", speaker::SIBUXIANG);
+    b.setFlag("storeroom_lock", "解开");
+    b.setFlag("storeroom_key", "已得");
+    b.item("铜钥匙", "一把黄铜小钥匙，锁孔是「品」字形的。齿上还留着开匣时蹭下的新亮。");
+    b.jump("storeroom_enter");
+
+    b.label("storeroom_box_got");
+    b.narr("铜匣空着，丝绒上只剩一个钥匙形状的浅印。");
+    b.jump("storeroom_enter");
+
+    // ---- 里间的门：要铜钥匙 ----
+    b.label("storeroom_inner");
+    b.branch("storeroom_key", "已得", "storeroom_inner_open");
+    b.narr("右墙上还有一扇更窄的门，门板上钉着一把黄铜小锁。锁孔是「品」字形的。");
+    b.say("四不相", "……得先找到能开这把锁的东西。", speaker::SIBUXIANG);
+    b.jump("storeroom_enter");
+
+    b.label("storeroom_inner_open");
+    b.branch("storeroom_inner_got", "1", "storeroom_inner_empty");
+    b.narr("铜钥匙插进去，只转了半圈，锁就开了。里间很小，堆着几只没封口的旧木匣。");
+    b.narr("匣子里是留着的东西：一包伤药、一只暖手的铜炉，还有一吊钱。");
+    b.setFlag("storeroom_inner_got", "1");
+    b.item("金创药", "细布包着的黑色药膏，专治蹄子蹭破的伤。（HP +60）");
+    b.setFlag("hp_sibuxiang", "100");
+    b.item("铜手炉", "炉里还有一点余温。捧着它，冷得发抖的手会停下来。（TP +40）");
+    b.setFlag("tp_sibuxiang", "40");
+    b.jump("storeroom_enter");
+
+    b.label("storeroom_inner_empty");
+    b.narr("里间的木匣都空了。他退出来，把门重新掩上。");
+    b.jump("storeroom_enter");
+
     // ---- 深夜，宿舍（睡觉 → 门无声开 → 灰白幼崽） ----
     // 「一、深夜，宿舍」这一段是**在地图里跑的**：
     //  · 白天那段收尾旁白一次播完（不逐句按回车），直接进深夜宿舍；
@@ -229,6 +366,13 @@ Script buildPrologue() {
     //    绕开玩家走到床边停顿、说那两句，再走回门边离开；
     //  · 他说完「他擦了擦眼泪，离开了。」才真正从地图上消失，然后进清晨。
     // 玩家可以一边看一边在旁边走动（他自己会绕开玩家）。
+    //
+    // 走位说明（床在左上角：x 2~4 / y 2~5，枕头在 (2,4)、棉被在 (3,4)）：
+    //   进门 (20,15) → 往里走一段 → 停在门口「哥……」 →
+    //   一直走到床前 (5,4)（枕头正右边那一格）站住，
+    //   剩下的台词**全部站在这儿对着床上的人说完**，不再乱走。
+    // 以前是走到 (20,8) 就停在房间正中、离床很远，说「他站在床边」时
+    // 人却站在房间中间，看着像发呆不动。
     b.label("sushe_night");
     {
         MapActor sy;
@@ -244,32 +388,32 @@ Script buildPrologue() {
         sy.steps.push_back(ScriptBuilder::actNarr("一只灰白色的幼崽从缝里挤进来——琥珀色的眼睛在黑暗中亮了一瞬，又暗下去，像怕自己的光吵醒了床上的白麒麟。"));
         sy.steps.push_back(ScriptBuilder::actMove(20, 12));
         sy.steps.push_back(ScriptBuilder::actSay("四不遇", "哥……", speaker::SIBUYU));
-        sy.steps.push_back(ScriptBuilder::actMove(20, 8));
+        // 走到床前站住（(5,4) = 枕头右边一格），从这里开始不再走开。
+        sy.steps.push_back(ScriptBuilder::actMove(5, 4, 180));
         sy.steps.push_back(ScriptBuilder::actNarr("他站在床边，很小，小到只够得着床沿。他伸出爪子，把四不相踢到地上的棉絮拾起来，抖了抖，重新盖在四不相身上。"));
         sy.steps.push_back(ScriptBuilder::actNarr("动作很轻，轻到像在给一朵快要谢了的花培土。他的爪尖没有碰到四不相。一次都没有。"));
         sy.steps.push_back(ScriptBuilder::actNarr("像怕自己一碰，那朵花就彻底谢了。"));
         sy.steps.push_back(ScriptBuilder::actSay("四不遇",
             "哥……今晚……梦里相见……你能不能不要再拒绝我……能不能……别跑……能不能想起来啊……",
             speaker::SIBUYU));
-        sy.steps.push_back(ScriptBuilder::actMove(15, 9));
-        sy.steps.push_back(ScriptBuilder::actNarr("他蹲在床边，爪尖搭在床沿上，没有碰四不相。琥珀色的眼睛看着他，看得很深，像在看一个被锁在很深很深地方的人。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("他就蹲在床边，爪尖搭在床沿上，没有碰四不相。琥珀色的眼睛看着他，看得很深，像在看一个被锁在很深很深地方的人。"));
         sy.steps.push_back(ScriptBuilder::actNarr("他伸手够不到，他喊他听不见。他站在外面等了一万年，里面的门一直没有开。"));
-        sy.steps.push_back(ScriptBuilder::actMove(25, 11));
-        sy.steps.push_back(ScriptBuilder::actNarr("风灌进来，吹动他缺了一点的尾巴尖。他缩了一下，把自己蜷得更小了一点，像一朵不敢开大的花。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("风从窗缝里灌进来，吹动他缺了一点的尾巴尖。他缩了一下，把自己蜷得更小了一点，像一朵不敢开大的花。"));
         sy.steps.push_back(ScriptBuilder::actNarr("他擦了擦眼泪，离开了。"));
-        sy.steps.push_back(ScriptBuilder::actMove(32, 13));
-        sy.steps.push_back(ScriptBuilder::actMove(32, 15));
+        sy.steps.push_back(ScriptBuilder::actMove(20, 12));
+        sy.steps.push_back(ScriptBuilder::actMove(20, 15, 180));
         sy.steps.push_back(ScriptBuilder::actDisappear());
-        sy.steps.push_back(ScriptBuilder::actNarr("门关上了。那朵从脚边开出来的荼蘼花留在床脚，花瓣上还凝着一滴极淡的琥珀色光泽。"));
-        sy.steps.push_back(ScriptBuilder::actNarr("像一只没来得及闭上的眼睛，替他把没能说出口的那句「没关系」，又咽了回去。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("门关上了。屋子里又暗下来，只剩下他一个人，和一屋子睡着的旧家具。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("他不知道自己在那儿站了多久，也不知道自己是什么时候又睡着的。梦像水一样漫上来，把一切都盖住了。"));
         sy.steps.push_back(ScriptBuilder::actFinish());
 
         std::vector<MapActor> actors;
         actors.push_back(sy);
-        // 玩家的出口：床上 → 清晨。深夜这一段，四不遇自己会演完走人，
-        // 玩家想接着睡（回车床）也随时可以。
+        // 玩家的出口：床上 → 清晨。深夜这一段四不相是睡着的，动不了，
+        // 也不该动——这是他的梦，只有四不遇在动。演完自动接「二、清晨」。
         b.mapWithActors("dorm_night", -1, -1, {{"床", "sushe_scene"}}, actors);
     }
+
 
     // =====================================================================
     //  二、清晨，宿舍
@@ -277,22 +421,43 @@ Script buildPrologue() {
     b.label("sushe_scene");
 
     // =====================================================================
-    //  二、清晨，宿舍
+    //  二、清晨，宿舍  —— 一醒来就把操控权交回玩家
     // =====================================================================
+    // 昨夜床边那只灰白幼崽、那朵开在梦里的花，都要等天亮才有答案。
+    // 从醒来的这一刻起，四不相就能自己走：床脚的荼蘼、桌上的公文、那扇正门，
+    // 想先看哪个就先看哪个；只有推门出去，才接「走廊」。
     b.scene("二 · 清晨，宿舍", "scene_room_morning");
     b.narr("闹钟不合时宜地响起。四不相猛地坐起，浑身一颤。");
-    b.say("四不相", "呼……呼……完了完了完了……什么时辰了？！", speaker::SIBUXIANG);
-    b.narr("他扭头看向窗外——天已经大亮了。晨光从破纸洞里灌进来，在他纯白色的绒毛上铺了一层惨淡的薄亮。");
-    b.narr("他从床上一跃而下，爪尖在地板上一滑，差点摔倒。被子都没叠，公文散了一桌子。");
-    b.say("四不相", "昨天迟了一次……今天再迟，就要调去杂物司了……杂物司啊……", speaker::SIBUXIANG);
-    b.narr("他的声音在发颤。杂物司是什么地方？他不知道。他只知道，去了那里的人，再也没有回来过。");
-    b.narr("没有人说过那里不好，没有人说过那里可怕。但所有被调去杂物司的同僚，临走时都看着他笑。");
-    b.narr("笑得很轻，轻到像纸片被风吹走时的那种声音。然后，他们就再也没出现过。");
-    b.say("四不相", "不能迟……不能迟……不能迟……", speaker::SIBUXIANG);
-    b.narr("他抓起桌上的公文，爪尖都在抖。跑出门的时候，后蹄被门槛绊了一下，左爪蹭掉了一小块，他没空看。");
-    b.narr("他一路狂奔。他不知道自己在逃什么。他只是觉得，不能停下来。一停下来，就会被什么东西追上。");
+    b.narr("窗外天已经大亮了。晨光从破纸洞里灌进来，在他纯白色的绒毛上铺了一层惨淡的薄亮。");
+    b.narr("公文散了一桌子，被子也没叠。他低头看了看自己的爪尖——昨夜是不是攥过什么，他记不清了。");
+    b.say("四不相", "要迟到了，得赶快过去", speaker::SIBUXIANG);
+    b.narr("他跳下床，爪尖在地板上一滑，差点摔倒。");
+    b.setFlag("time", "清晨");   // 天亮了：这时候再去看床，不会再睡回去
+    b.map("dorm_morning", -1, -1, {
+        {"正门", "morning_door"}, {"杂物间的门", "dorm_storeroom"},
+        {"荼蘼花", "morning_flower"}, {"双螭玉佩", "dorm_save"},
+        {"桌子", "dorm_desk"}, {"窗", "dorm_window"},
+        {"木柜", "dorm_cabinet"}, {"椅子", "dorm_chair"}, {"书简", "dorm_bamboo"},
+        {"砚台", "dorm_ink"}, {"油灯", "dorm_lamp"}, {"文卷", "dorm_scroll"},
+        {"枕头", "dorm_pillow"}, {"棉被", "dorm_quilt"}, {"墙皮", "dorm_plaster"},
+        {"棉絮", "dorm_fluff"}, {"地上的灰尘", "dorm_dust"},
+    });
 
-    // ---- 探索地图：奔向走廊（触发「走廊」） ----
+    // ---- 床脚那朵花：天亮以后，它才真的在地板上 ----
+    b.label("morning_flower");
+    b.narr("床脚的地板上，开着一朵荼蘼。");
+    b.narr("花瓣是极淡的白，白到几乎透明，花心一点琥珀色的蕊——在这间满是旧纸和灰尘的屋子里，干净得不像真的。");
+    b.say("四不相", "……荼蘼？哪来的荼蘼？", speaker::SIBUXIANG);
+    b.narr("他俯身碰了碰。花瓣凉得像水，一碰就抖了一下，抖落一层极细的粉。");
+    b.narr("荼蘼是春天最后开的花。开到荼蘼，春天就尽了。");
+    b.narr("他蹲在那儿看了很久，最后什么也没敢动，只是把公文捡起来，拍掉灰。指尖上留了一点凉，很久都没有散。");
+    b.jump("dorm_back");
+
+    // ---- 出门：抓公文、绊门槛、一路狂奔 ----
+    b.label("morning_door");
+    b.narr("他抓起桌上的公文，爪尖都在抖，一把拉开了正门。");
+    b.narr("跑出门的时候，后蹄被门槛绊了一下，左爪蹭掉了一小块，他没空看。");
+    b.narr("他一路狂奔。他不知道自己在逃什么。他只是觉得，不能停下来。一停下来，就会被什么东西追上。");
     b.map("tianting", 3, 1, { {"走廊", "corridor"} });
     b.label("corridor");
 

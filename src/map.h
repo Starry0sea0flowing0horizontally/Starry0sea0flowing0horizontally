@@ -27,6 +27,13 @@ public:
     // 同一间宿舍的「深夜」版本：布局一模一样，只是满屋暗下来（整屏压暗）。
     // 深夜宿舍的剧情（四不遇进来、说话、离开）就在这张图上跑。
     void loadDormNight();
+    // 第二天清晨：白天宿舍重建（去掉深夜的压暗），玩家从床边醒来，床脚开着荼蘼。
+    void loadDormMorning();
+    // 「杂物房」地图：宿舍右墙那扇窄门后面的一间小屋。
+    // 出口只有两个：来时的门（回宿舍）和右墙的「里间的门」（上锁，要铜钥匙）。
+    void loadStoreroom();
+    // 深夜宿舍专用：四不遇走后，床脚开出一朵荼蘼（往地形里补一格「花」）。
+    void bloomFlower();
 
     // 已加载的地图 id / 显示标题（用于抬头与图例）
     const std::string& id() const;
@@ -58,6 +65,8 @@ public:
     // BFS 最短路径：从玩家当前位置走到 (tx,ty)，返回每一步方向序列。
     // 方向字符：'U'上 'D'下 'L'左 'R'右。目标不可达或非目标格时返回空。
     std::vector<char> pathTo(int tx, int ty) const;
+    // 同上，但起点由调用者指定（地图角色从自己的格子出发时用这个）
+    std::vector<char> pathFrom(int sx, int sy, int tx, int ty) const;
 
     // 绘制网格；highlightLoc 的地点标记高亮显示（作为当前目标）
     void render(Renderer& r, const std::string& highlightLoc) const;

@@ -8,6 +8,7 @@
 #include "game.h"
 
 #include <chrono>
+#include <cstdio>
 #include <deque>
 #include <string>
 #include <thread>
@@ -123,6 +124,23 @@ static std::pair<int, bool> readEventPair(int& /*mx*/, int& /*my*/) {
 }
 
 // ---------------------------------------------------------------- 章节分发 --
+// 供自动化测试驱动地图循环用的输入注入（正常游戏里恒为 null）。
+MapInputHook* g_mapInputHook = nullptr;
+
+void Game::beginFrame() {
+    frameLines_.clear();
+    if (g_mapInputHook) {
+        renderer_.captureBegin();
+    }
+}
+void Game::endFrame() {
+    if (g_mapInputHook) {
+        std::vector<std::string> got;
+        renderer_.captureEnd(got);
+        for (std::size_t i = 0; i < got.size(); ++i) frameLines_.push_back(got[i]);
+    }
+}
+
 // 目前只有序章；未来新增章节时在此按 chapter 名返回对应脚本。
 Script Game::buildChapter(const std::string& chapter) {
     (void)chapter;
@@ -213,6 +231,19 @@ void Game::playFromSave(int slot) {
     Flags flags = d.flags;
     initProfile(flags, false);
     std::size_t pc = d.pc;
+    // 优先按「label + 偏移」还原位置：剧情改过稿以后，旧存档的裸 pc 会指到别的段落里，
+    // 一读档就多冒出一句不相干的台词（比如站在玉佩上却看到「地上积了一层灰尘」）。
+    if (!d.resumeLabel.empty()) {
+        Script::labels_t::const_iterator it = script.labels.find(d.resumeLabel);
+        if (it != script.labels.end()) {
+            pc = it->second + d.resumeOffset;
+            if (pc >= script.nodes.size()) pc = it->second;
+        }
+    }
+    if (pc >= script.nodes.size()) pc = 0;
+    // 读档前先擦干净：绝不把标题画面 / 上一局留下的字带进剧情。
+    renderer_.clear();
+    bodyLines_ = 0;
     // 跳过存档点自身的「是否存档」提示节点：读档回来不该再问一次。
     skipSavePrompt(script, pc);
     currentChapter_ = d.chapter;
@@ -413,11 +444,25 @@ void Game::runScript(Script& script, std::size_t& pc, Flags& flags) {
 // 选择「回到标题 / 退出」-> 返回 true，runScript 结束。
 bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) {
     if (n.mapId == "dorm_night") map_.loadDormNight();
+    else if (n.mapId == "dorm_morning") map_.loadDormMorning();
+    else if (n.mapId == "storeroom") map_.loadStoreroom();
     else if (n.mapId == "dorm") map_.loadDorm();
     else map_.loadDefaultTianting();
     // mapStartX/mapStartY 为负数时，沿用玩家上一次站的位置（互动后留在原地）
     if (n.mapStartX >= 0 && n.mapStartY >= 0)
         map_.setPlayer(n.mapStartX, n.mapStartY);
+    // 深夜：四不相是睡着的。把他直接放在床上那一格——整夜躺在那儿，
+    // 一格都动不了（方向键/WASD/鼠标全部不响应），天亮才醒来。
+    if (n.mapId == "dorm_night") {
+        bool put = false;
+        for (int y = 1; y < map_.height() - 1 && !put; ++y) {
+            for (int x = 1; x < map_.width() - 1 && !put; ++x) {
+                if (map_.locAt(x, y) != "床") continue;
+                map_.setPlayer(x, y);
+                put = true;
+            }
+        }
+    }
     bodyLines_ = 0;   // 地图清屏重画，正文顶替状态重置
     g_clickQueue.clear();   // 上一段剧情里积下的鼠标点击不要带进地图
 
@@ -429,9 +474,11 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
         std::string glyph;
         std::string color;
         std::size_t step = 0;
+        int nextAt = 0;        // 下一步最早开始时刻（毫秒，相对 actorTiming）
         bool hidden = false;   // 已离场
         bool done = false;     // 脚本走完
     };
+    int actorTiming = 0;   // 角色演出用毫秒时钟（真实流逝，不用 sleep 阻塞）
     std::vector<ActorState> actors;
     for (std::size_t i = 0; i < n.mapActors.size(); ++i) {
         const MapActor& a = n.mapActors[i];
@@ -545,8 +592,112 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
         if (!actors[i].done) anyActorAlive = true;
     }
 
-    // 推进一个角色的脚本一步。返回 true 表示画面需要重画。
-    // 角色的台词 / 旁白直接走正文渲染（和剧情里一样的字体、颜色、打字机效果）。
+    // ---- 底部字幕条：角色说话时挂在画面最下方，不打断他走位 ----
+    // 一律「玩家按空格 / 回车」才翻页，没有任何自动翻页、也不会因为等太久自己消失：
+    //  · 正在逐字吐的时候按空格/回车 = 立刻把这一页吐完；
+    //  · 这一页已经吐完，再按一下 = 翻到下一页（最后一页就收起，放他继续走）；
+    //  · 一句话太长、一页放不下时会自动分成几页，仍然一页一页按着看；
+    //  · 台词没翻完之前角色不往下走，所以每一句都保证读得到。
+    struct Subtitle {
+        bool isDialogue = false;
+        std::string speaker;
+        std::string text;      // 完整台词
+        int shown = 0;         // 已显示到第几个字节（UTF-8 安全推进）
+        int nextAt = 0;        // 下一个字出现的时刻（毫秒）
+        std::string color;
+        int remainMs = 0;      // >0 = 正等玩家按键；不会随时间递减
+        // 折行结果：每行在 text 里的字节区间 [first, second)
+        std::vector<std::pair<std::size_t, std::size_t> > lines;
+        std::vector<int> pageEnd;   // 每页结束的字节偏移
+        std::size_t page = 0;       // 当前第几页（从 0 起）
+    };
+    Subtitle subtitle;
+    // 屏幕下方固定留 3 行给台词，第 4 行放提示，画面高度永远不变。
+    const std::size_t kSubLinesPerPage = 3;
+    // 打字机节奏：与正文同一套速度设置（设置界面的「文字速度」）
+    int subDelayMs = Renderer::speedDelayUs() / 1000;
+    if (subDelayMs < 0) subDelayMs = 0;
+
+    // 下一个 UTF-8 字符的边界（不切碎多字节汉字）
+    auto nextBoundary = [](const std::string& s, std::size_t i) -> std::size_t {
+        if (i >= s.size()) return s.size();
+        ++i;
+        while (i < s.size() && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) ++i;
+        return i;
+    };
+    // 按显示宽度折行：全角汉字占 2 列，不能按字节数折
+    auto wrapSub = [](const std::string& s, int maxCols) {
+        std::vector<std::pair<std::size_t, std::size_t> > out;
+        if (maxCols < 8) maxCols = 8;
+        std::size_t i = 0, b = 0;
+        int w = 0;
+        while (i < s.size()) {
+            std::size_t j = i + 1;
+            while (j < s.size() && (static_cast<unsigned char>(s[j]) & 0xC0) == 0x80) ++j;
+            int cw = Renderer::widthOf(s.substr(i, j - i));
+            if (w + cw > maxCols && i > b) {
+                out.push_back(std::make_pair(b, i));
+                b = i;
+                w = 0;
+            }
+            w += cw;
+            i = j;
+        }
+        out.push_back(std::make_pair(b, s.size()));
+        return out;
+    };
+    // 字幕前缀宽度：对白是「　　【名字】」，旁白只有缩进
+    auto subIndentW = [](const Subtitle& s) -> int {
+        return s.isDialogue ? (4 + 2 + Renderer::widthOf(s.speaker) + 2) : 4;
+    };
+    // 当前这一页结束在哪个字节
+    auto subPageStop = [&]() -> int {
+        if (subtitle.pageEnd.empty()) return static_cast<int>(subtitle.text.size());
+        std::size_t p = subtitle.page;
+        if (p >= subtitle.pageEnd.size()) p = subtitle.pageEnd.size() - 1;
+        return subtitle.pageEnd[p];
+    };
+    // 这一页是否已经吐完、正等玩家按空格/回车
+    auto subFull = [&]() -> bool {
+        return subtitle.remainMs > 0 && subtitle.shown >= subPageStop();
+    };
+
+    // 角色往前走一格（一步一格，看得见他在走）。返回 true 表示画面需要重画。
+    // 绕开玩家与其它角色；被挡住就原地等，不硬挤过去。
+    auto actorStepMove = [&](std::size_t ai) -> bool {
+        ActorState& st = actors[ai];
+        const MapActorStep& s = n.mapActors[ai].steps[st.step];
+        std::vector<char> path = map_.pathFrom(st.x, st.y, s.x, s.y);
+        if (path.empty()) {
+            st.x = s.x;
+            st.y = s.y;
+            st.step++;
+            return true;
+        }
+        char d = path[0];
+        int nx = st.x, ny = st.y;
+        if (d == 'U') ny--;
+        else if (d == 'D') ny++;
+        else if (d == 'L') nx--;
+        else if (d == 'R') nx++;
+        if (actorAt(nx, ny) >= 0 || (nx == map_.playerX() && ny == map_.playerY())) {
+            // 玩家（或别的角色）挡在面前：如果他已经贴着目的地了，就站这儿不动，
+            // 免得因为玩家正好站在床边，他就永远走不到、看起来「根本没走过去」。
+            int ddx = st.x - s.x;
+            int ddy = st.y - s.y;
+            if (ddx < 0) ddx = -ddx;
+            if (ddy < 0) ddy = -ddy;
+            if (ddx + ddy == 1) { st.step++; return true; }
+            return false;   // 否则原地等一会儿，不硬挤过去
+        }
+        st.x = nx;
+        st.y = ny;
+        if (st.x == s.x && st.y == s.y) st.step++;
+        return true;
+    };
+
+    // 往前推进一步（不含计时，计时由主循环里的 actorClock 负责）。
+    // 台词只登记字幕、立刻返回：他自己一边说一边走，不会被一段话钉在原地。
     auto actorTick = [&]() -> bool {
         for (std::size_t ai = 0; ai < actors.size(); ++ai) {
             ActorState& st = actors[ai];
@@ -555,83 +706,53 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             if (st.step >= a.steps.size()) { st.done = true; continue; }
             const MapActorStep& s = a.steps[st.step];
             if (s.kind == "move") {
-                // 一格一格走过去（绕开玩家与其它角色），每格停一下，看得出在动。
-                // 走一格就返回，下一次 tick 再走下一格——这样玩家能看见他在走。
-                std::vector<char> path = map_.pathTo(s.x, s.y);
-                if (path.empty()) {
-                    st.x = s.x;
-                    st.y = s.y;
+                // 已经离场的角色只推进步数，不再在地图上跑（免得「消失」之后
+                // 又冒出来，或者因为目标格被占住而永远走不出去）。
+                if (st.hidden) {
                     st.step++;
+                    st.nextAt = actorTiming + 60;
                     return true;
                 }
-                char d = path[0];
-                int nx = st.x, ny = st.y;
-                if (d == 'U') ny--;
-                else if (d == 'D') ny++;
-                else if (d == 'L') nx--;
-                else if (d == 'R') nx++;
-                if (actorAt(nx, ny) >= 0 || (nx == map_.playerX() && ny == map_.playerY())) {
-                    // 玩家（或别的角色）挡在面前：等一会儿，不硬挤过去
-                    std::this_thread::sleep_for(std::chrono::milliseconds(60));
-                    return false;
-                }
-                st.x = nx;
-                st.y = ny;
-                if (st.x == s.x && st.y == s.y) st.step++;
-                std::this_thread::sleep_for(std::chrono::milliseconds(s.ms > 0 ? s.ms : 240));
-                return true;
+                st.nextAt = actorTiming + (s.ms > 0 ? s.ms : 240);
+                return actorStepMove(ai);
             }
             if (s.kind == "wait") {
-                std::this_thread::sleep_for(std::chrono::milliseconds(s.ms > 0 ? s.ms : 1));
+                st.nextAt = actorTiming + (s.ms > 0 ? s.ms : 1);
                 st.step++;
                 return true;
             }
             if (s.kind == "disappear") {
                 st.hidden = true;
                 st.step++;
+                st.nextAt = actorTiming + 200;
                 return true;
             }
             if (s.kind == "exit") {
                 st.done = true;
                 st.step++;
+                st.nextAt = actorTiming + 200;
                 continue;
             }
-            // narration / dialogue：**自动**显示出来（不停等按键），留一点时间给人看。
-            // 这是「角色照着自己的台词说话」——剧情自己往下走，玩家只管看。
+            // narration / dialogue：挂一条字幕（打字机逐字显示），等玩家按空格/回车
             {
-                Node t;
-                if (s.kind == "dialogue") {
-                    t.type = NodeType::Dialogue;
-                    t.speaker = s.speaker;
-                    t.text = s.text;
-                    t.spkColor = s.color;
-                } else {
-                    t.type = NodeType::Narration;
-                    t.text = s.text;
-                    t.color = s.color;
+                Subtitle sub;
+                sub.isDialogue = (s.kind == "dialogue");
+                sub.speaker = s.speaker;
+                sub.text = s.text;
+                sub.color = (s.kind == "dialogue") ? s.color : (s.color.empty() ? color::DIM : s.color);
+                sub.shown = 0;
+                sub.nextAt = actorTiming;
+                sub.remainMs = 1;   // 有效标记：只有玩家按空格/回车才会清零
+                sub.lines = wrapSub(sub.text, 78 - subIndentW(sub));
+                for (std::size_t i = kSubLinesPerPage - 1; i + 1 < sub.lines.size();
+                     i += kSubLinesPerPage) {
+                    sub.pageEnd.push_back(static_cast<int>(sub.lines[i].second));
                 }
-                bodyLines_ = 0;
-                if (t.type == NodeType::Dialogue) renderDialogue(t);
-                else renderNarration(t);
-                // 停留时间：按字数估算（每字约 130ms，30ms 下限，最快也要 1.4 秒）
-                int chars = Renderer::widthOf(t.text) / 2;
-                int dwell = 1400 + chars * 130;
-                if (dwell > 6500) dwell = 6500;
-                // 期间允许玩家按 Esc 开菜单，也可以按键跳过
-                long long elapsed = 0;
-                while (elapsed < dwell) {
-                    if (input::kbhit()) {
-                        int k = input::readKey();
-                        if (k == input::KEY_ESC) {
-                            MenuAct act = systemMenu(script, pc, flags);
-                            if (act == MenuAct::Title || act == MenuAct::Quit) return false;
-                        }
-                        break;
-                    }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(40));
-                    elapsed += 40;
-                }
+                sub.pageEnd.push_back(static_cast<int>(sub.text.size()));
+                sub.page = 0;
+                subtitle = sub;
                 st.step++;
+                st.nextAt = actorTiming;
                 return true;
             }
         }
@@ -639,8 +760,42 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
     };
 
     bool npcDone = false;
+    bool npcEpilogue = false;      // 深夜那场演完后的收尾（自动接清晨）
+    // 深夜宿舍：四不相在床上睡着。四不遇动的时候，他一格都不能动——
+    // 方向键、WASD、鼠标点击全部不响应，只有空格/回车能翻台词。
+    // 这是设计上的「他还睡着」，不是卡住了。
+    const bool playerSleeping = (n.mapId == "dorm_night");
+    int frameNo = 0;
+    // 角色「卡住」检测：连续这么多帧没有任何进展，就直接把脚本推进下去，
+    // 保证演出一定会结束（玩家被挡路、地图被点错都不会让这场戏永远停摆）。
+    int stuckFrames = 0;
+    std::string lastDrawnSig;   // 上一帧画面指纹：没变就不重画，避免全屏闪烁
+    std::chrono::steady_clock::time_point lastClock = std::chrono::steady_clock::now();
     while (true) {
-        // 有角色在演：先推进他一步，再重画（这样看起来是他自己在走）。
+        // 统一时钟：角色走位与字幕打字都用真实流逝的毫秒数，不再靠 sleep 卡住流程。
+        std::chrono::steady_clock::time_point tickNow = std::chrono::steady_clock::now();
+        int elapsedMs = static_cast<int>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(tickNow - lastClock).count());
+        if (elapsedMs < 0) elapsedMs = 0;
+        if (elapsedMs > 200) elapsedMs = 200;   // 切窗口回来别一次跳一大截
+        lastClock = tickNow;
+        actorTiming += elapsedMs;
+
+        // 字幕打字机：按速度设置逐字吐出来，但绝不越过当前这一页的结尾。
+        // 「立即」档（0ms）会一次吐完这一页；其余档位每帧至多吐一个字。
+        int emitGuard = 0;
+        while (subtitle.remainMs > 0 && subtitle.shown < subPageStop() &&
+               actorTiming >= subtitle.nextAt && emitGuard++ < 512) {
+            subtitle.shown = static_cast<int>(nextBoundary(subtitle.text,
+                static_cast<std::size_t>(subtitle.shown)));
+            if (subtitle.shown > subPageStop()) subtitle.shown = subPageStop();
+            subtitle.nextAt = actorTiming + subDelayMs;
+            if (subDelayMs > 0) break;
+        }
+
+        // 有角色在演：卡着台词等他按回车，台词读完才让他继续走——所以他会「停住」，
+        // 但不会僵死（方向键、回车、ESC 任何时候都有效）。
+        bool keepMoving = false;
         if (anyActorAlive && !npcDone) {
             bool aliveNow = false;
             for (std::size_t i = 0; i < actors.size(); ++i)
@@ -648,43 +803,195 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             if (!aliveNow) {
                 npcDone = true;
             } else {
-                actorTick();
-                if (!npcDone) {
-                    // 角色还在演：**把地图连他一起画出来**。
-                    // 以前这里只打印一行提示、根本不画地图，所以四不遇虽然在走，
-                    // 玩家屏幕上却看不到任何东西——「代表他的那个字」压根没画出去。
-                    renderer_.clear();
-                    renderer_.newline();
-                    renderer_.printCentered("—— " + map_.title() + " ——", color::CYAN);
-                    renderer_.newline();
-                    map_.renderActors(renderer_, actorViews());
-                    renderer_.printLine("", color::DIM);
-                    renderer_.printLine("　　遇 = 四不遇　　＠ = 你　　〔他在自己走；方向键/WASD 你也能走〕",
-                                        color::DIM);
-                    if (!input::kbhit()) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(40));
-                    } else {
-                        int mx2 = 0, my2 = 0;
-                        std::pair<int, bool> ev2 = readEventPair(mx2, my2);
-                        int kk = ev2.first;
-                        if (kk == input::KEY_UP || kk == 'w' || kk == 'W') map_.movePlayer(0, -1);
-                        else if (kk == input::KEY_DOWN || kk == 's' || kk == 'S') map_.movePlayer(0, 1);
-                        else if (kk == input::KEY_LEFT || kk == 'a' || kk == 'A') map_.movePlayer(-1, 0);
-                        else if (kk == input::KEY_RIGHT || kk == 'd' || kk == 'D') map_.movePlayer(1, 0);
-                        else if (kk == input::KEY_ESC) {
-                            MenuAct act = systemMenu(script, pc, flags);
-                            if (act == MenuAct::Title || act == MenuAct::Quit) return true;
-                            if (act == MenuAct::Reload) return false;
-                        }
-                    }
-                    continue;
-                }
+                keepMoving = true;
             }
         }
+        if (keepMoving) {
+            beginFrame();
+            // 画面指纹：角色位置 / 字幕进度 没变就完全不重画。
+            // 老 cmd 的 clear() 是整屏填充，每 20ms 重画一次看着就是在闪。
+            std::string sig = std::to_string(subtitle.remainMs) + "|" +
+                              std::to_string(subtitle.shown) + "|" +
+                              std::to_string(subtitle.page);
+            for (std::size_t i = 0; i < actors.size(); ++i) {
+                sig += "|" + std::to_string(actors[i].x) + "," + std::to_string(actors[i].y) +
+                       (actors[i].hidden ? "h" : "") + (actors[i].done ? "d" : "");
+            }
+            sig += "|" + std::to_string(map_.playerX()) + "," + std::to_string(map_.playerY());
+            if (sig != lastDrawnSig) {
+            lastDrawnSig = sig;
+            renderer_.clear();
+            renderer_.newline();
+            renderer_.printCentered("—— " + map_.title() + " ——", color::CYAN);
+            renderer_.newline();
+            map_.renderActors(renderer_, actorViews());
+
+            // 字幕条：固定 3 行台词 + 1 行提示，共 4 行，画面高度永远不变。
+            // 长句按显示宽度折行；一页最多 3 行，超出的分页，仍然一页一页按着看。
+            bool waiting = subFull();
+            {
+                std::size_t first = subtitle.page * kSubLinesPerPage;
+                for (std::size_t li = 0; li < kSubLinesPerPage; ++li) {
+                    std::string body;
+                    if (subtitle.remainMs > 0) {
+                        std::size_t idx = first + li;
+                        if (idx < subtitle.lines.size()) {
+                            std::size_t b = subtitle.lines[idx].first;
+                            std::size_t e = subtitle.lines[idx].second;
+                            std::size_t shownB = static_cast<std::size_t>(subtitle.shown);
+                            if (b < shownB) {
+                                if (e > shownB) e = shownB;
+                                body = subtitle.text.substr(b, e - b);
+                            }
+                        }
+                    }
+                    std::string head;
+                    if (li == 0) {
+                        head = subtitle.isDialogue ? ("　　【" + subtitle.speaker + "】")
+                                                   : std::string("　　");
+                    } else {
+                        head.assign(static_cast<std::size_t>(subIndentW(subtitle)), ' ');
+                    }
+                    if (subtitle.remainMs > 0)
+                        renderer_.printLine(head + body, subtitle.color.c_str());
+                    else
+                        renderer_.printLine("", color::DIM);
+                }
+                if (subtitle.remainMs > 0) {
+                    std::string h = waiting ? std::string("〔空格 / 回车〕继续")
+                                            : std::string("〔空格 / 回车〕立刻显示完整这句");
+                    if (waiting && subtitle.pageEnd.size() > 1) {
+                        h += "　（" + std::to_string(subtitle.page + 1) + "/" +
+                             std::to_string(subtitle.pageEnd.size()) + "）";
+                    }
+                    renderer_.printLine("　　　　" + h, color::DIM);
+                } else {
+                    renderer_.printLine(playerSleeping
+                        ? std::string("　　遇 = 四不遇　　你还在睡着，一动也动不了　　空格 / 回车 继续")
+                        : std::string("　　遇 = 四不遇　　相 = 你　　〔方向键/WASD 你也能走〕"),
+                        color::DIM);
+                }
+            }
+            }
+
+            // ---- 输入：任何时候都可以按（测试时由钩子注入） ----
+            int kk = input::KEY_NONE;
+            bool clickFlag = false;
+            int mx2 = 0, my2 = 0;
+            if (g_mapInputHook) {
+                std::pair<int, bool> ev2 = g_mapInputHook->poll();
+                kk = ev2.first;
+                clickFlag = ev2.second;
+            } else if (input::kbhit()) {
+                std::pair<int, bool> ev2 = readEventPair(mx2, my2);
+                kk = ev2.first;
+                clickFlag = ev2.second;
+            }
+            if (clickFlag) {
+                // 睡着的夜里不响应鼠标走位（点哪儿都不动）。其它地图照常。
+                if (playerSleeping) { clickFlag = false; kk = input::KEY_NONE; }
+            }
+            if (clickFlag) {
+                // 鼠标点地图 -> 走到那一格
+                int ox = 0, oy = 0;
+                if (reachableSpot(mx2 / 2, my2 - mapTopRow, ox, oy)) {
+                    std::vector<char> pth = map_.pathTo(ox, oy);
+                    for (std::size_t i = 0; i < pth.size(); ++i) {
+                        switch (pth[i]) {
+                            case 'U': map_.movePlayer(0, -1); break;
+                            case 'D': map_.movePlayer(0, 1); break;
+                            case 'L': map_.movePlayer(-1, 0); break;
+                            case 'R': map_.movePlayer(1, 0); break;
+                            default: break;
+                        }
+                    }
+                }
+                kk = input::KEY_NONE;
+            }
+            if (kk == input::KEY_ENTER || kk == input::KEY_SPACE) {
+                if (subtitle.remainMs > 0) {
+                    if (subtitle.shown < subPageStop()) {
+                        subtitle.shown = subPageStop();          // 先把这一页吐完
+                    } else if (subtitle.page + 1 < subtitle.pageEnd.size()) {
+                        subtitle.page++;                          // 翻到下一页
+                    } else {
+                        subtitle.remainMs = 0;   // 最后一句读完，收起字幕，放他继续走
+                    }
+                }
+            } else if (!playerSleeping && (kk == input::KEY_UP || kk == 'w' || kk == 'W')) {
+                map_.movePlayer(0, -1);
+            } else if (!playerSleeping && (kk == input::KEY_DOWN || kk == 's' || kk == 'S')) {
+                map_.movePlayer(0, 1);
+            } else if (!playerSleeping && (kk == input::KEY_LEFT || kk == 'a' || kk == 'A')) {
+                map_.movePlayer(-1, 0);
+            } else if (!playerSleeping && (kk == input::KEY_RIGHT || kk == 'd' || kk == 'D')) {
+                map_.movePlayer(1, 0);
+            }
+            // 其它键一律不碰台词：不会因为误按一个键就把一整句话吞掉。
+
+            // ---- 角色推进：台词没读完就原地等着（他会停在那里，不是僵死） ----
+            // 注意：判断「谁该动」必须看这一步自己的时间戳，不能用「整场第几步」比较——
+            // 步数是全图累加的，前面几步耗时长，后面的时间戳反而显得"已经过期"，
+            // 于是每帧都会白推一步，台词一冒出来就被下一步顶掉。
+            bool acted = false;
+            for (std::size_t ai = 0; ai < actors.size() && !acted; ++ai) {
+                ActorState& st = actors[ai];
+                if (st.done) continue;
+                const MapActor& a = n.mapActors[ai];
+                if (st.step >= a.steps.size()) { st.done = true; continue; }
+                const MapActorStep& s = a.steps[st.step];
+                if ((s.kind == "narration" || s.kind == "dialogue") && subtitle.remainMs > 0) {
+                    // 上一句玩家还没翻页：停住等，不吞掉这句话
+                    continue;
+                }
+                if (actorTiming < st.nextAt) continue;   // 这一步还没到开始时间
+                actorTick();
+                acted = true;
+            }
+            (void)acted;
+
+            // 卡住兜底：只有「该走却走不动」（被玩家堵路、地图异常）才强行推进。
+            // 正等着玩家按空格/回车时不算卡住——那是他在读，等多久都得等。
+            bool waitingKey = subtitle.remainMs > 0;
+            if (!acted && !waitingKey) ++stuckFrames;
+            else stuckFrames = 0;
+            if (stuckFrames > 400) {
+                stuckFrames = 0;
+                for (std::size_t i = 0; i < actors.size(); ++i) {
+                    if (actors[i].done) continue;
+                    const MapActor& a2 = n.mapActors[i];
+                    if (actors[i].step + 1 >= a2.steps.size()) actors[i].done = true;
+                    else actors[i].step++;
+                    break;
+                }
+            }
+
+            endFrame();
+            if (g_mapInputHook) g_mapInputHook->onFrame(++frameNo, frameLines_);
+            if (!g_mapInputHook && !input::kbhit()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            continue;
+        }
+
+        // 四不遇演完、走了：这一夜就过去了。
+        // 地上什么都不留——荼蘼要等第二天早上才看得见（清晨那段里发现）。
+        if (npcDone && !npcEpilogue) {
+            npcEpilogue = true;
+            lastDrawnSig.clear();
+            for (std::size_t i = 0; i < n.mapExits.size(); ++i) {
+                if (n.mapExits[i].location != "床") continue;
+                int ox = 0, oy = 0;
+                if (locateExit(n.mapExits[i], ox, oy)) map_.setPlayer(ox, oy);
+                if (triggerHere()) return false;
+                break;
+            }
+        }
+
         renderer_.clear();
-        renderer_.newline();
         renderer_.printCentered("—— " + map_.title() + " ——", color::CYAN);
         renderer_.newline();
+        beginFrame();
         map_.renderActors(renderer_, actorViews());
 
         // 折行保护：地图显示宽度超过终端时给出醒目提示（否则显示/鼠标都会错乱）
@@ -772,11 +1079,18 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
         renderer_.printLine("　　〔方向键/WASD 走　鼠标点击走　数字键直达　座位上回车互动〕",
                             color::DIM);
 
+        endFrame();
+        if (g_mapInputHook) g_mapInputHook->onFrame(++frameNo, frameLines_);
+
         // 读取输入事件：可能是按键，也可能是鼠标左键点击
         int mx = 0, my = 0;
         int k = input::KEY_NONE;
         bool isClick = false;
-        if (!g_clickQueue.empty()) {
+        if (g_mapInputHook) {
+            std::pair<int, bool> ev = g_mapInputHook->poll();
+            k = ev.first;
+            isClick = ev.second;
+        } else if (!g_clickQueue.empty()) {
             // 之前积攒下来的鼠标点击：与本次按键分开处理，先走寻路
             mx = g_clickQueue.front().first;
             my = g_clickQueue.front().second;
@@ -846,6 +1160,8 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             if (act == MenuAct::Reload) return false;   // script/pc/flags 已就地更新
         }
     }
+    if (g_mapInputHook) g_mapInputHook->onEnd();
+    return true;
 }
 
 // ---------------------------------------------------------------- 节点渲染 --
@@ -1557,11 +1873,24 @@ void Game::statusMenu(Flags& flags, std::size_t /*charIdx*/) {
 // 旧版在清屏前又打了一行「已保存」，结果那行残留在屏幕别处（或挤到下一屏开头），
 // 看上去就是「存档的时候最底下会出现不相干文字」。现在改成：
 //   保存成功与否用一个只有「一行」的小提示窗，看完按回车立刻清屏。
-void Game::saveMenu(Script& /*script*/, std::size_t& pc, Flags& flags) {
+void Game::saveMenu(Script& script, std::size_t& pc, Flags& flags) {
     int slot = slotPicker("选择存档槽");
     if (slot < 0) return;
     SaveData d;
     d.pc = pc;
+    // 记下当前位置最近的 label 与偏移，读档时按 label 还原——改稿也不会串台词。
+    std::size_t bestIdx = 0;
+    bool bestFound = false;
+    for (Script::labels_t::const_iterator it = script.labels.begin();
+         it != script.labels.end(); ++it) {
+        if (it->second > pc) continue;
+        if (!bestFound || it->second > bestIdx) {
+            bestIdx = it->second;
+            d.resumeLabel = it->first;
+            bestFound = true;
+        }
+    }
+    if (bestFound) d.resumeOffset = pc - bestIdx;
     d.flags = flags;
     d.chapter = currentChapter_;
     d.sceneTitle = currentScene_;

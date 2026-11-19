@@ -11,7 +11,12 @@ namespace game {
 
 // 一份存档的内容
 struct SaveData {
-    std::size_t pc = 0;            // 剧情节点位置
+    std::size_t pc = 0;            // 剧情节点位置（旧字段，继续写盘以兼容旧存档）
+    // 读档锚点：最近的一个 label 名 + 距该 label 的节点偏移。
+    // 只用裸 pc 的话，剧情一改（插一句旁白），旧存档的 pc 就指到别的段落里去了，
+    // 读档会莫名其妙多出一句不相干的台词。改成「label + 偏移」就顶得住改稿。
+    std::string resumeLabel = "";
+    std::size_t resumeOffset = 0;
     Flags flags;                   // 全局变量（选择分支 / 关键 flag）
     std::string chapter = "序章";  // 章节名
     std::string sceneTitle = "";   // 当前场景名（用于菜单摘要）

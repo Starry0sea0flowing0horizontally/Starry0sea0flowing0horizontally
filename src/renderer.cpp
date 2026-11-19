@@ -155,6 +155,7 @@ void Renderer::clear() {
 void Renderer::newline() {
     std::cout << '\n';
     std::cout.flush();
+    if (capturing_) captureBuf_ += '\n';
 }
 
 void Renderer::eraseLines(int n) {
@@ -164,6 +165,43 @@ void Renderer::eraseLines(int n) {
         std::cout << "\033[F\033[2K";
     }
     std::cout.flush();
+    if (capturing_) captureBuf_ += "\033[F\033[2K";
+}
+
+// ---------------------------------------------------------------- 抓屏 --
+// 只在自动化测试里用：captureBegin 后把输出的每个字符同时记进 captureBuf_，
+// captureEnd 按换行切分、剥掉 ANSI 颜色码，得到「屏幕上到底有什么字」。
+void Renderer::captureBegin() {
+    capturing_ = true;
+    captureBuf_.clear();
+}
+
+void Renderer::captureEnd(std::vector<std::string>& lines) {
+    capturing_ = false;
+    std::string cur;
+    for (std::size_t i = 0; i < captureBuf_.size(); ++i) {
+        char ch = captureBuf_[i];
+        if (ch == '\033') {
+            // 跳过 CSI 序列 \033[...m 与 \033[F / \033[2J 等
+            std::size_t j = i + 1;
+            if (j < captureBuf_.size() && captureBuf_[j] == '[') {
+                ++j;
+                while (j < captureBuf_.size()) {
+                    char t = captureBuf_[j];
+                    if ((t >= 'A' && t <= 'Z') || (t >= 'a' && t <= 'z')) break;
+                    ++j;
+                }
+            }
+            i = j;
+            continue;
+        }
+        if (ch == '\r') continue;
+        if (ch == '\n') { lines.push_back(cur); cur.clear(); continue; }
+        if (ch == '\b' || ch == '\0') continue;
+        cur += ch;
+    }
+    if (!cur.empty()) lines.push_back(cur);
+    captureBuf_.clear();
 }
 
 void Renderer::printLine(const std::string& text, const char* color) {
@@ -172,6 +210,7 @@ void Renderer::printLine(const std::string& text, const char* color) {
     if (color) std::cout << color::RESET;
     std::cout << '\n';
     std::cout.flush();
+    if (capturing_) captureBuf_ += text + '\n';
 }
 
 bool Renderer::typeLine(const std::string& text, const char* color, int delayUs) {
@@ -199,6 +238,7 @@ bool Renderer::typeLine(const std::string& text, const char* color, int delayUs)
     if (color) std::cout << color::RESET;
     std::cout << '\n';
     std::cout.flush();
+    if (capturing_) captureBuf_ += text + '\n';
     return skipped;
 }
 
@@ -210,6 +250,8 @@ void Renderer::printCentered(const std::string& text, const char* color) {
     std::cout << std::string(static_cast<std::size_t>(pad), ' ') << text << '\n';
     if (color) std::cout << color::RESET;
     std::cout.flush();
+    if (capturing_)
+        captureBuf_ += std::string(static_cast<std::size_t>(pad), ' ') + text + '\n';
 }
 
 void Renderer::printRule(char ch, const char* color) {
@@ -458,11 +500,11 @@ void Renderer::setTextSpeed(int level) {
 }
 
 int Renderer::speedDelayUs() {
-    // 0=立即(0) 1=快(6000) 2=正常(16000) 3=慢(32000)
+    // 0=立即(0) 1=快(30ms) 2=正常(55ms) 3=慢(100ms)
     switch (g_textSpeedLevel) {
         case 0: return 0;
-        case 1: return 6000;
-        case 3: return 32000;
+        case 1: return 30000;
+        case 3: return 100000;
         case 2:
         default: return TYPE_DELAY_US;
     }

@@ -109,7 +109,7 @@ void Map::loadDefaultTianting() {
 //            下墙正中 = 正门（都在墙上，站不上去，站在旁边按回车互动）
 //    尘      地上的灰尘（两处，可互动）
 //    螭      双螭玉佩（左下角，存档点）
-//    ＠      玩家（四不相）
+//    相      玩家（四不相），用他自己的代表字「相」画在地上
 // ============================================================================
 void Map::loadDorm() {
     if (id_ == "dorm") return;
@@ -271,6 +271,139 @@ void Map::loadDormNight() {
     }
 }
 
+// ============================================================================
+//  宿舍 · 清晨（第二天）
+//  深夜那张图是整屏压暗的；天亮以后要把白天那张重新建出来，把暗屏去掉，
+//  并在床脚补上那朵荼蘼——深夜里看到的只是梦，天亮时它才真的在地板上。
+// ============================================================================
+void Map::loadDormMorning() {
+    id_.clear();          // 强制重建：刚跑完深夜，id_ 还停在 "dorm"
+    loadDorm();
+    title_ = "宿舍 · 清晨";
+    night_ = false;
+    // 从床上起来：站到床沿外那一格（床占 x 2~4 / y 2~5）。
+    int sx = 6, sy = 5;
+    if (!isWalkable(sx, sy)) { sx = 6; sy = 6; }
+    if (!isWalkable(sx, sy)) { sx = 20; sy = 15; }   // 兜底：门内那块空地板
+    px_ = sx;
+    py_ = sy;
+    bloomFlower();        // 床脚那朵荼蘼，天亮了才看得见
+}
+
+// ============================================================================
+//  杂物房（杂物间）—— 从宿舍右墙那扇窄门进来的一间小屋
+//  只有两个出口：来时那扇门（回宿舍），和右墙上的「里间的门」。
+//  里间的门锁着，钥匙藏在铜匣里；铜匣是「字锁」，要解字谜（荼 / 靡 / 蘼），
+//  按对了才弹开，拿到「铜钥匙」。钥匙不是捡的，是解出来的。
+// ============================================================================
+void Map::loadStoreroom() {
+    if (id_ == "storeroom") return;
+
+    const std::string S = "\xE3\x80\x80";   // 全角空格
+    const int W = 32;
+    const int H = 14;
+
+    std::vector<std::vector<std::string>> g(
+        static_cast<std::size_t>(H),
+        std::vector<std::string>(static_cast<std::size_t>(W), S));
+
+    for (int x = 0; x < W; ++x) {
+        g[0][static_cast<std::size_t>(x)] = "墙";
+        g[H - 1][static_cast<std::size_t>(x)] = "墙";
+    }
+    for (int y = 0; y < H; ++y) {
+        g[static_cast<std::size_t>(y)][0] = "墙";
+        g[static_cast<std::size_t>(y)][W - 1] = "墙";
+    }
+
+    doorCells_.clear();
+    doorCells_.push_back(std::make_pair(16, H - 1));   // 来时的门：下墙正中
+    doorCells_.push_back(std::make_pair(31, 6));       // 里间的门：右墙
+    for (std::size_t i = 0; i < doorCells_.size(); ++i) {
+        int dx = doorCells_[i].first;
+        int dy = doorCells_[i].second;
+        if (dy >= 0 && dy < H && dx >= 0 && dx < W) g[dy][dx] = S;
+    }
+
+    auto put = [&](int x, int y, const std::string& c) {
+        if (x >= 1 && x < W - 1 && y >= 1 && y < H - 1)
+            g[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] = c;
+    };
+
+    // ---- 靠上墙的一排木架，堆着蒙灰的旧物 ----
+    put(3, 2, "架"); put(4, 2, "架"); put(5, 2, "架");
+    put(10, 2, "架"); put(11, 2, "架"); put(12, 2, "架"); put(13, 2, "架");
+    put(22, 2, "架"); put(23, 2, "架");
+
+    // ---- 地上的木箱 ----
+    put(5, 8, "箱"); put(6, 8, "箱");
+    put(5, 9, "箱");
+    put(20, 10, "箱");
+
+    // ---- 右下的旧柜 ----
+    put(25, 9, "柜"); put(26, 9, "柜");
+    put(25, 10, "柜"); put(26, 10, "柜");
+
+    // ---- 铜匣（字锁）在屋子右侧 ----
+    put(24, 6, "匣");
+
+    // 这间屋子只是间普通的杂物间：没有账册、没有花、也没有故事，
+    // 只有架子、箱子、柜子和一只铜匣——放东西的地方。
+    put(12, 7, "箱");
+    put(3, 10, "箱");
+    put(16, 8, "架");
+
+    tiles_ = g;
+
+    px_ = 16;
+    py_ = 12;
+    if (!isWalkable(px_, py_)) {
+        bool fixed = false;
+        for (int r = 1; r < H && !fixed; ++r) {
+            for (int dy = -r; dy <= r && !fixed; ++dy) {
+                for (int dx = -r; dx <= r && !fixed; ++dx) {
+                    if (isWalkable(16 + dx, 12 + dy)) {
+                        px_ = 16 + dx;
+                        py_ = 12 + dy;
+                        fixed = true;
+                    }
+                }
+            }
+        }
+    }
+
+    locByCell_.clear();
+    locByCell_["架"] = "木架";
+    locByCell_["箱"] = "木箱";
+    locByCell_["柜"] = "旧柜";
+    locByCell_["匣"] = "铜匣";
+
+    locAt_.clear();
+    locAt_[std::make_pair(16, H - 1)] = "杂物间的门";
+    locAt_[std::make_pair(31, 6)] = "里间的门";
+
+    id_ = "storeroom";
+    title_ = "杂物房";
+    night_ = false;
+}
+
+// ============================================================================
+//  深夜 · 床脚开花
+//  四不遇走了以后，床脚那朵「荼蘼」才开出来。直接往 tiles_ 里补一格「花」，
+//  它立刻是一个可站立、可按回车互动的地点（地点 id = 荼蘼花）。
+//  只有深夜那张图会调用。
+// ============================================================================
+void Map::bloomFlower() {
+    if (tiles_.empty()) return;
+    const int fx = 5;
+    const int fy = 5;                       // 床脚右侧那一格（床占 2~4 / 2~5）
+    if (fy < 1 || fy >= height() - 1) return;
+    if (fx < 1 || fx >= width() - 1) return;
+    tiles_[static_cast<std::size_t>(fy)][static_cast<std::size_t>(fx)] = "花";
+    locByCell_["花"] = "荼蘼花";
+    locAt_[std::make_pair(fx, fy)] = "荼蘼花";
+}
+
 std::string Map::locAt(int x, int y) const {
     std::map<std::pair<int, int>, std::string>::const_iterator it =
         locAt_.find(std::make_pair(x, y));
@@ -357,10 +490,18 @@ std::string Map::playerLocation() const {
 
 // ---------------------------------------------------------------- BFS 寻路 --
 std::vector<char> Map::pathTo(int tx, int ty) const {
+    return pathFrom(px_, py_, tx, ty);
+}
+
+// 从任意起点 (sx,sy) 到 (tx,ty) 的路径。
+// 地图角色（四不遇）必须用自己的位置当起点，不能借用玩家的 px_/py_，
+// 否则他会按「玩家在哪儿」来算方向，看起来就是不动或者乱走。
+std::vector<char> Map::pathFrom(int sx, int sy, int tx, int ty) const {
     std::vector<char> path;
     if (!inBounds(tx, ty)) return path;
     if (!isWalkable(tx, ty)) return path;
-    if (tx == px_ && ty == py_) return path;   // 已在目标上，无需移动
+    if (!inBounds(sx, sy)) return path;
+    if (tx == sx && ty == sy) return path;   // 已在目标上，无需移动
 
     const int W = width();
     const int H = height();
@@ -374,10 +515,10 @@ std::vector<char> Map::pathTo(int tx, int ty) const {
         static_cast<std::size_t>(H),
         std::vector<int>(static_cast<std::size_t>(W), -1));
 
-    // 简单的队列：BFS 从 (px_, py_) 出发
+    // 简单的队列：BFS 从 (sx, sy) 出发
     std::vector<std::pair<int,int>> q;
-    q.push_back(std::make_pair(px_, py_));
-    visited[static_cast<std::size_t>(py_)][static_cast<std::size_t>(px_)] = true;
+    q.push_back(std::make_pair(sx, sy));
+    visited[static_cast<std::size_t>(sy)][static_cast<std::size_t>(sx)] = true;
 
     const int dx[4] = {0, 0, -1, 1};
     const int dy[4] = {-1, 1, 0, 0};
@@ -405,12 +546,14 @@ std::vector<char> Map::pathTo(int tx, int ty) const {
     }
     if (!found) return path;
 
-    // 从目标回溯到起点，收集方向，再反转
+    // 从目标回溯到起点，收集方向，再反转。
+    // prev[cy][cx] 编码的是「从这一格回到父格」的方向（0上 1下 2左 3右）。
+    // 所以 p 既是回退方向，也是我们「前进到这一格」的反方向：
+    //   p=0 回到父格要往上 → 反过来，从父格到这里是往下 'D'
+    // 注意 step 与坐标位移必须一致，否则会朝反方向一路走出地图。
     int cx = tx, cy = ty;
-    while (!(cx == px_ && cy == py_)) {
+    while (!(cx == sx && cy == sy)) {
         int p = prev[static_cast<std::size_t>(cy)][static_cast<std::size_t>(cx)];
-        // p 是「回到父节点」的移动方向（0上 1下 2左 3右）；
-        // 前进方向与它相反。
         char step;
         switch (p) {
             case 0: step = 'D'; cy -= 1; break;   // 回退向上 → 前进向下
@@ -469,7 +612,7 @@ void Map::renderWith(Renderer& r, const std::string& highlightLoc,
                     c = "\033[7m";   // 站在门上：反显的「门」字
                 } else {
                     // 玩家站在「地点 / 家具」格上时，反显显示物件字（床/柜/桌椅），
-                    // 而不是用 ＠ 盖掉它——这样玩家一眼就能看出自己站在什么上面。
+                    // 而不是用「相」盖掉它——这样玩家一眼就能看出自己站在什么上面。
                     bool onProp = !isWallCell(cell) &&
                                   cell != "\xE3\x80\x80" &&   // 全角空格=空地
                                   cell != ".";
