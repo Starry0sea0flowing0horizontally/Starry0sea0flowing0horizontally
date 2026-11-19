@@ -1,0 +1,42 @@
+# CMake build output
+/build/
+/cmake-build-*/
+/out/
+/CMakeFiles/
+/CMakeCache.txt
+/cmake_install.cmake
+/compile_commands.json
+
+# Compiled binaries and intermediate files
+/huazhitumi
+/huazhitumi.exe
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dll
+*.dylib
+*.pdb
+*.ilk
+*.class
+
+# Runtime save data
+/saves/*.sav
+/saves/last.txt
+
+# IDE and editor files
+/.idea/
+/.vscode/*
+!/.vscode/tasks.json
+!/.vscode/launch.json
+*.swp
+*.swo
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# OS metadata
+.DS_Store
+Thumbs.db
