@@ -45,6 +45,7 @@ struct MapExit {
 //
 // step 的 kind：
 //   "move"       走到 (x, y)，一格一格走，每格停一下（看得出在动）
+//   "pmove"      让**玩家**自己走到 (x, y)（撞上四不遇那种不能操作的演出）
 //   "narration"  出一句旁白（屏幕上按正文显示，回车继续）
 //   "dialogue"   出一句对白（speaker / text）
 //   "wait"       原地停一会儿（毫秒）
@@ -69,6 +70,9 @@ struct MapActor {
     int x = 0;                       // 出场位置
     int y = 0;
     bool autoRun = true;             // 一进地图就自己开始演
+    // 不画在地图上：只负责把一串旁白 / 对白挂到地图下面（回廊开场、文书阁开场）。
+    // 用它就能让「一整段文字」在**地图下方**逐句出现，玩家一边看地图一边按空格。
+    bool unseen = false;
     std::vector<MapActorStep> steps;
 };
 
@@ -231,6 +235,15 @@ public:
     static MapActorStep actMove(int x, int y, int ms = 260) {
         MapActorStep s;
         s.kind = "move";
+        s.x = x;
+        s.y = y;
+        s.ms = ms;
+        return s;
+    }
+    // 让玩家自己走到 (x,y)：演出期间玩家不能操作，脚自己动
+    static MapActorStep actPMove(int x, int y, int ms = 110) {
+        MapActorStep s;
+        s.kind = "pmove";
         s.x = x;
         s.y = y;
         s.ms = ms;

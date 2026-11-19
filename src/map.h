@@ -35,6 +35,19 @@ public:
     // 深夜宿舍专用：四不遇走后，床脚开出一朵荼蘼（往地形里补一格「花」）。
     void bloomFlower();
 
+    // ---- 天庭回廊（seg = 1..4）----
+    // 一条会拐弯的长回廊，切成四段：西廊 → 中廊（向南折）→ 东廊（S 形）→ 困兽府前。
+    // 每段两头各开一个拱门，走上去（不用按回车）就切到相邻那段；
+    // 两旁的墙上开着神仙府邸的门，要按回车才推得开；每段都立着一块「记事碑」（存档点）。
+    void loadCorridor(int seg);
+    // 「走到就切图」的格子（回廊两头的拱门）。
+    // 返回该格登记的地点名，不是这种格子返回 ""。
+    std::string autoExitAt(int x, int y) const;
+
+    // 「文书阁」：四不相干活的地方——一屋子桌子、椅子、笔墨纸砚、竹简，
+    // 两个同事，还有站在最里头那张桌边上的上司。
+    void loadOffice();
+
     // 已加载的地图 id / 显示标题（用于抬头与图例）
     const std::string& id() const;
     const std::string& title() const;
@@ -95,6 +108,8 @@ private:
     // 门格坐标：数据上是空地（可通行），画面上画成「门」字。
     // 门是出口，必须能走上去；像墙一样挡人就成了「永远够不着的死门」。
     std::vector<std::pair<int, int>> doorCells_;
+    // 自动出口格：(x,y) -> 地点名。走上去就立刻切图（回廊两头的拱门）。
+    std::map<std::pair<int, int>, std::string> autoAt_;
     std::string id_;                          // 当前地图 id
     std::string title_;                       // 地图显示标题
     int px_ = 0;                              // 玩家列坐标 x

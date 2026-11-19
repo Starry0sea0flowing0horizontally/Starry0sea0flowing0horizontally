@@ -111,16 +111,17 @@ std::string boxMid(const std::string& text, int cols, const char* color = nullpt
 static std::deque<std::pair<int, int>> g_clickQueue;
 
 // 取下一个输入事件；返回 {键值, 是否鼠标点击}，点击坐标压入 g_clickQueue。
+// 关键：遇到鼠标点击时**立刻返回**（按键值为 KEY_NONE），不许在这里等下一个按键。
+// 以前这里写成「等待直到读到一个按键」的循环，地图循环一调用就阻塞，
+// 于是字幕打字机只能靠玩家按键才往下走（一个字要按一次回车）。
 static std::pair<int, bool> readEventPair(int& /*mx*/, int& /*my*/) {
-    while (true) {
-        int x = 0, y = 0;
-        std::pair<int, bool> ev = input::readEvent(x, y);
-        if (ev.second) {
-            g_clickQueue.push_back(std::make_pair(x, y));
-            continue;   // 点击只进地图用，按键流程继续等按键
-        }
-        return ev;
+    int x = 0, y = 0;
+    std::pair<int, bool> ev = input::readEvent(x, y);
+    if (ev.second) {
+        g_clickQueue.push_back(std::make_pair(x, y));
+        return std::make_pair(input::KEY_NONE, false);   // 点击排队，本帧没有按键
     }
+    return ev;
 }
 
 // ---------------------------------------------------------------- 章节分发 --
@@ -234,11 +235,15 @@ void Game::playFromSave(int slot) {
     // 优先按「label + 偏移」还原位置：剧情改过稿以后，旧存档的裸 pc 会指到别的段落里，
     // 一读档就多冒出一句不相干的台词（比如站在玉佩上却看到「地上积了一层灰尘」）。
     if (!d.resumeLabel.empty()) {
-        Script::labels_t::const_iterator it = script.labels.find(d.resumeLabel);
-        if (it != script.labels.end()) {
-            pc = it->second + d.resumeOffset;
-            if (pc >= script.nodes.size()) pc = it->second;
-        }
+        // 存档时若停在某个地图里闲逛，锚点就是那张地图的 label（当前 pc 正好等于锚点）。
+        // 此时偏移为 0，读档要直接回到那张地图，而不是把地图节点再跑一遍——
+        // 重跑会先打一遍旁白，屏幕上就多出一句不相干的话。
+        pc = resolveResume(script, d.resumeLabel, d.resumeOffset);
+    } else {
+        // 旧版本存档（没有 resume 行）只有裸 pc。脚本改过稿以后，那个下标会落在
+        // 半句旁白上（读档时屏幕上就多冒出一句不相干的话）。所以往回退到最近的
+        // 段落边界（地图 / 清屏 / 场景标题）——那里一定是干净的入口。
+        pc = snapToBoundary(script, pc);
     }
     if (pc >= script.nodes.size()) pc = 0;
     // 读档前先擦干净：绝不把标题画面 / 上一局留下的字带进剧情。
@@ -249,6 +254,45 @@ void Game::playFromSave(int slot) {
     currentChapter_ = d.chapter;
     currentScene_ = d.sceneTitle;
     runScript(script, pc, flags);
+}
+
+// 按「label + 偏移」还原读档位置。
+// 偏移为 0 说明存档时 pc 正好停在某个 label 上——最常见的两种情况：
+//   · 停在某张地图的 label（在地图里闲逛时存的档）
+//   · 停在某个事件的 label（刚点开物件、还没出字）
+// 这两种情况都**不能再把那个节点执行一遍**，否则会重复一段旁白（「多出来的文字」）。
+// 所以：往回找到最近的 Clear / Map / 剧情节点，从它的「下一个」开始。
+std::size_t Game::resolveResume(const Script& script, const std::string& label,
+                                std::size_t offset) {
+    Script::labels_t::const_iterator it = script.labels.find(label);
+    if (it == script.labels.end()) return 0;   // 这版脚本已经没有这个锚点
+    std::size_t pc = it->second;
+    if (offset > 0) {
+        pc += offset;
+        if (pc >= script.nodes.size()) pc = it->second;
+    } else {
+        while (pc < script.nodes.size()) {
+            NodeType t = script.nodes[pc].type;
+            if (t == NodeType::Clear || t == NodeType::Map) break;
+            ++pc;
+        }
+        if (pc >= script.nodes.size()) pc = it->second;
+    }
+    return pc;
+}
+
+// 把 pc 退到最近的「干净入口」：地图 / 清屏 / 场景标题节点。
+// 从 pc 本身开始往前找（含 pc），找不到就原样返回。
+std::size_t Game::snapToBoundary(const Script& script, std::size_t pc) {
+    std::size_t i = (pc < script.nodes.size()) ? pc : (script.nodes.empty() ? 0 : script.nodes.size() - 1);
+    while (true) {
+        if (i >= script.nodes.size()) break;
+        NodeType t = script.nodes[i].type;
+        if (t == NodeType::Map || t == NodeType::Clear || t == NodeType::Scene) return i;
+        if (i == 0) break;
+        --i;
+    }
+    return pc;
 }
 
 // 若 pc 正指向「存档点提示」节点，则跳到它的下一个节点，
@@ -446,7 +490,10 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
     if (n.mapId == "dorm_night") map_.loadDormNight();
     else if (n.mapId == "dorm_morning") map_.loadDormMorning();
     else if (n.mapId == "storeroom") map_.loadStoreroom();
+    else if (n.mapId == "office") map_.loadOffice();
     else if (n.mapId == "dorm") map_.loadDorm();
+    else if (n.mapId.size() > 8 && n.mapId.compare(0, 8, "corridor") == 0)
+        map_.loadCorridor(n.mapId[8] - '0');     // corridor1..4
     else map_.loadDefaultTianting();
     // mapStartX/mapStartY 为负数时，沿用玩家上一次站的位置（互动后留在原地）
     if (n.mapStartX >= 0 && n.mapStartY >= 0)
@@ -487,6 +534,9 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
         st.y = a.y;
         st.glyph = a.glyph.empty() ? std::string(MAP_ACTOR_SIBUYU) : a.glyph;   // 「遇」
         st.color = a.color;
+        // 只说话、不出场的角色（回廊 / 文书阁的开场旁白）：
+        // 从一开始就算「已离场」，画面上根本不会多出一个人。
+        st.hidden = a.unseen;
         actors.push_back(st);
     }
 
@@ -494,10 +544,34 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
     const std::string target = n.mapExits.empty() ? "" : n.mapExits[0].location;
 
     // 触发地点的剧情：把 pc 跳到对应 label。返回是否成功触发。
+    // 清晨地图的出口指向的都是「白天/夜里」那套 label；天已经亮了，说的话不能一样，
+    // 所以这里统一查表换成清晨版的 label（表里没有的才用原 label）。
+    auto morningLabel = [](const std::string& lbl) -> std::string {
+        static const char* const from[] = {
+            "dorm_bed", "dorm_desk", "dorm_window", "dorm_cabinet", "dorm_chair",
+            "dorm_bamboo", "dorm_ink", "dorm_lamp", "dorm_scroll", "dorm_quilt",
+            "dorm_dust", "dorm_save", "dorm_storeroom", "dorm_back"
+        };
+        static const char* const to[] = {
+            "morning_bed_view", "morning_desk", "morning_window", "morning_cabinet",
+            "morning_chair", "morning_bamboo", "morning_ink", "morning_lamp",
+            "morning_scroll", "morning_quilt", "morning_dust", "morning_save",
+            "morning_storeroom", "morning_back"
+        };
+        for (std::size_t i = 0; i < sizeof(from) / sizeof(from[0]); ++i) {
+            if (lbl == from[i]) return std::string(to[i]);
+        }
+        return lbl;
+    };
+    const bool morningMap = (n.mapId == "dorm_morning");
+    // 回廊：走到拱门 / 拐角就自动切图；站久了四不相会催一句「要迟到了」。
+    const bool corridorMap = (n.mapId.size() > 8 && n.mapId.compare(0, 8, "corridor") == 0);
     auto triggerExit = [&](const std::string& loc) -> bool {
         for (std::size_t i = 0; i < n.mapExits.size(); ++i) {
             if (n.mapExits[i].location == loc) {
-                Script::labels_t::const_iterator it = script.labels.find(n.mapExits[i].label);
+                std::string lbl = morningMap ? morningLabel(n.mapExits[i].label)
+                                             : n.mapExits[i].label;
+                Script::labels_t::const_iterator it = script.labels.find(lbl);
                 pc = (it != script.labels.end()) ? it->second : pc + 1;
                 return true;
             }
@@ -517,12 +591,22 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
         for (int i = 0; i < 4; ++i) {
             int nx = px + dxy[i][0], ny = py + dxy[i][1];
             if (!map_.inBounds(nx, ny)) continue;
-            std::string c = map_.cellAt(nx, ny);
-            if (c != "窗" && c != "门") continue;   // 只让嵌在墙里的窗 / 旧式门格可隔一格互动
-            std::string l = map_.locationAt(nx, ny);
+            // 站不上去、但登记了地点名的东西都能隔一格互动：
+            // 嵌在墙里的窗、以及站在地图上的同事 / 上司；
+            // 门格虽然能站上去，站在门旁边按回车也一样能推门。
+            if (map_.isWalkable(nx, ny) && !map_.isDoorCell(nx, ny)) continue;
+            std::string l = map_.locAt(nx, ny);
             if (!l.empty() && triggerExit(l)) return true;
         }
         return false;
+    };
+    // 回廊的拱门 / 拐角：走到那一格就立刻切图，不用再按回车。
+    // 只在「刚刚迈了一步」之后调用——否则站在拱门上开新地图时会立刻又被弹走，来回死循环。
+    bool autoTriggered = false;
+    auto checkAuto = [&]() {
+        if (!corridorMap || autoTriggered) return;
+        std::string ae = map_.autoExitAt(map_.playerX(), map_.playerY());
+        if (!ae.empty() && triggerExit(ae)) autoTriggered = true;
     };
     // 找「数字键直达 / 鼠标点击」应停靠的格子：
     //  · 家具 / 门 -> 那一格本身（门是出口，可以走上去）
@@ -530,7 +614,9 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
     auto locateExit = [&](const MapExit& ex, int& ox, int& oy) -> bool {
         for (int y = 0; y < map_.height(); ++y) {
             for (int x = 0; x < map_.width(); ++x) {
-                if (map_.locationAt(x, y) != ex.location) continue;
+                // locAt 才认「正门」这类门格；autoExitAt 认回廊两头的拱门这种「走上去就走」的格子
+                if (map_.locAt(x, y) != ex.location &&
+                    map_.autoExitAt(x, y) != ex.location) continue;
                 if (map_.isWalkable(x, y)) { ox = x; oy = y; return true; }
                 // 不可站立（窗）：找相邻可走格
                 static const int dxy[4][2] = {{0,1},{0,-1},{1,0},{-1,0}};
@@ -661,6 +747,27 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
     auto subFull = [&]() -> bool {
         return subtitle.remainMs > 0 && subtitle.shown >= subPageStop();
     };
+    // 在字幕条里挂一句话（打字机逐字吐，只有空格/回车能翻页）。
+    // 清晨开场、回廊里「不能闲逛了」的催促都走这一条路，参数一致。
+    auto setSub = [&](bool dlg, const std::string& spk, const std::string& text,
+                      const char* col) {
+        subtitle.isDialogue = dlg;
+        subtitle.speaker = spk;
+        subtitle.text = text;
+        subtitle.color = (col != nullptr) ? std::string(col)
+                                          : std::string(color::SILVER);
+        subtitle.shown = 0;
+        subtitle.nextAt = actorTiming;
+        subtitle.remainMs = 1;   // 有效标记：只有空格 / 回车才翻得过去
+        subtitle.lines = wrapSub(text, 78 - subIndentW(subtitle));
+        subtitle.pageEnd.clear();
+        for (std::size_t i = kSubLinesPerPage - 1; i + 1 < subtitle.lines.size();
+             i += kSubLinesPerPage) {
+            subtitle.pageEnd.push_back(static_cast<int>(subtitle.lines[i].second));
+        }
+        subtitle.pageEnd.push_back(static_cast<int>(text.size()));
+        subtitle.page = 0;
+    };
 
     // 角色往前走一格（一步一格，看得见他在走）。返回 true 表示画面需要重画。
     // 绕开玩家与其它角色；被挡住就原地等，不硬挤过去。
@@ -696,6 +803,24 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
         return true;
     };
 
+    // 剧本让**玩家自己**走一格（撞上四不遇那一段）：返回 true 表示已经走到目的地。
+    // 演出期间玩家不能操作，脚自己往目标格挪——「自动撞上去」就是这么来的。
+    auto playerAutoMove = [&](int tx, int ty) -> bool {
+        std::vector<char> path = map_.pathFrom(map_.playerX(), map_.playerY(), tx, ty);
+        if (path.empty()) {
+            map_.setPlayer(tx, ty);
+            return true;
+        }
+        char d = path[0];
+        int nx = map_.playerX(), ny = map_.playerY();
+        if (d == 'U') ny--;
+        else if (d == 'D') ny++;
+        else if (d == 'L') nx--;
+        else if (d == 'R') nx++;
+        map_.setPlayer(nx, ny);
+        return (nx == tx && ny == ty);
+    };
+
     // 往前推进一步（不含计时，计时由主循环里的 actorClock 负责）。
     // 台词只登记字幕、立刻返回：他自己一边说一边走，不会被一段话钉在原地。
     auto actorTick = [&]() -> bool {
@@ -715,6 +840,12 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                 }
                 st.nextAt = actorTiming + (s.ms > 0 ? s.ms : 240);
                 return actorStepMove(ai);
+            }
+            if (s.kind == "pmove") {
+                // 玩家自己走（不可操作的那段路上，脚自己动）
+                st.nextAt = actorTiming + (s.ms > 0 ? s.ms : 110);
+                if (playerAutoMove(s.x, s.y)) st.step++;
+                return true;
             }
             if (s.kind == "wait") {
                 st.nextAt = actorTiming + (s.ms > 0 ? s.ms : 1);
@@ -761,6 +892,19 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
 
     bool npcDone = false;
     bool npcEpilogue = false;      // 深夜那场演完后的收尾（自动接清晨）
+    // 清晨宿舍：开场那几句（醒来 + 四不相「要迟到了」）不在地图之前吞掉，
+    // 而是挂在**地图下方**的字幕条里，玩家一边看地图一边按空格/回车读完。
+    // 只在「刚醒过来」这一次出现：记一个 flag，出了宿舍再回来就不再重播。
+    if (n.mapId == "dorm_morning" && !subtitle.remainMs &&
+        stats::get(flags, "morning_intro").empty()) {
+        stats::set(flags, "morning_intro", "1");
+        setSub(false, "", "闹钟不合时宜地响起。四不相猛地坐起，浑身一颤。"
+                          "窗外天已经大亮了。晨光从破纸洞里灌进来，在他纯白色的绒毛上铺了一层惨淡的薄亮。",
+               color::DIM);
+    }
+    // 回廊里闲逛太久：四不相自己会催一句。隔一段时间再犯还会再催。
+    int idleMs = 0;
+    const int kIdleNagMs = 15000;
     // 深夜宿舍：四不相在床上睡着。四不遇动的时候，他一格都不能动——
     // 方向键、WASD、鼠标点击全部不响应，只有空格/回车能翻台词。
     // 这是设计上的「他还睡着」，不是卡住了。
@@ -876,38 +1020,19 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
 
             // ---- 输入：任何时候都可以按（测试时由钩子注入） ----
             int kk = input::KEY_NONE;
-            bool clickFlag = false;
             int mx2 = 0, my2 = 0;
             if (g_mapInputHook) {
-                std::pair<int, bool> ev2 = g_mapInputHook->poll();
-                kk = ev2.first;
-                clickFlag = ev2.second;
+                kk = g_mapInputHook->poll().first;
             } else if (input::kbhit()) {
-                std::pair<int, bool> ev2 = readEventPair(mx2, my2);
-                kk = ev2.first;
-                clickFlag = ev2.second;
+                kk = readEventPair(mx2, my2).first;   // 点击不算，只要按键
             }
-            if (clickFlag) {
-                // 睡着的夜里不响应鼠标走位（点哪儿都不动）。其它地图照常。
-                if (playerSleeping) { clickFlag = false; kk = input::KEY_NONE; }
-            }
-            if (clickFlag) {
-                // 鼠标点地图 -> 走到那一格
-                int ox = 0, oy = 0;
-                if (reachableSpot(mx2 / 2, my2 - mapTopRow, ox, oy)) {
-                    std::vector<char> pth = map_.pathTo(ox, oy);
-                    for (std::size_t i = 0; i < pth.size(); ++i) {
-                        switch (pth[i]) {
-                            case 'U': map_.movePlayer(0, -1); break;
-                            case 'D': map_.movePlayer(0, 1); break;
-                            case 'L': map_.movePlayer(-1, 0); break;
-                            case 'R': map_.movePlayer(1, 0); break;
-                            default: break;
-                        }
-                    }
-                }
-                kk = input::KEY_NONE;
-            }
+            (void)mx2;
+            (void)my2;
+            // 演出期间（有人在演 / 四不相睡着）玩家**完全不能操作**：
+            // 点地图不走、按方向键也不走。唯一的例外是空格 / 回车翻台词，
+            // 以及 ESC 打开菜单。走位全交给剧本（"pmove"），
+            // 撞上四不遇那一段就是这样一步步撞上去的。
+            // 所以这里只认按键：鼠标点击（ev2.second）直接丢掉。
             if (kk == input::KEY_ENTER || kk == input::KEY_SPACE) {
                 if (subtitle.remainMs > 0) {
                     if (subtitle.shown < subPageStop()) {
@@ -918,14 +1043,20 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                         subtitle.remainMs = 0;   // 最后一句读完，收起字幕，放他继续走
                     }
                 }
-            } else if (!playerSleeping && (kk == input::KEY_UP || kk == 'w' || kk == 'W')) {
-                map_.movePlayer(0, -1);
-            } else if (!playerSleeping && (kk == input::KEY_DOWN || kk == 's' || kk == 'S')) {
-                map_.movePlayer(0, 1);
-            } else if (!playerSleeping && (kk == input::KEY_LEFT || kk == 'a' || kk == 'A')) {
-                map_.movePlayer(-1, 0);
-            } else if (!playerSleeping && (kk == input::KEY_RIGHT || kk == 'd' || kk == 'D')) {
-                map_.movePlayer(1, 0);
+            } else if (kk == input::KEY_ESC) {
+                MenuAct act = systemMenu(script, pc, flags);
+                if (act == MenuAct::Title || act == MenuAct::Quit) return true;
+                if (act == MenuAct::Reload) return false;   // script/pc/flags 已就地更新
+            }
+            // 清晨开场字幕还没读完：回车 / 空格先把字幕收掉（和睡着的夜里一样，只认这两个键）。
+            if (n.mapId == "dorm_morning" && subtitle.remainMs > 0 &&
+                (kk == input::KEY_ENTER || kk == input::KEY_SPACE)) {
+                if (subtitle.shown < static_cast<int>(subtitle.text.size())) {
+                    subtitle.shown = static_cast<int>(subtitle.text.size());
+                } else {
+                    subtitle.remainMs = 0;
+                    subtitle.text.clear();
+                }
             }
             // 其它键一律不碰台词：不会因为误按一个键就把一整句话吞掉。
 
@@ -988,11 +1119,52 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             }
         }
 
+        // 画面指纹：位置 / 字幕进度 / 地图都没变就完全不重画。
+        // 打字机现在是自己往下走的（每 20ms 一帧），如果每帧都整屏 clear，
+        // 老 cmd 里就是一片闪。只有真正变了才重画一次。
+        std::string drawSig = map_.id() + "|" + std::to_string(map_.playerX()) + "," +
+                              std::to_string(map_.playerY()) + "|" +
+                              std::to_string(subtitle.remainMs) + "|" +
+                              std::to_string(subtitle.shown) + "|" +
+                              std::to_string(subtitle.page) + "|" +
+                              std::to_string(subtitle.text.size());
+        if (drawSig == lastDrawnSig) {
+            if (!g_mapInputHook) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        } else {
+        lastDrawnSig = drawSig;
         renderer_.clear();
+        renderer_.newline();   // 空行(0) + 标题(1) + 空行(2)：地图从第 3 行开始，鼠标坐标才对得上
         renderer_.printCentered("—— " + map_.title() + " ——", color::CYAN);
         renderer_.newline();
         beginFrame();
         map_.renderActors(renderer_, actorViews());
+        // 开场字幕（清晨宿舍）与回廊里的字幕（催促 / 提示）：
+        // 挂在地图正下方，固定 2 行里逐字打出来，地图的位置不会上下跳。
+        if ((morningMap || corridorMap) && subtitle.remainMs > 0) {
+            const int ind = subIndentW(subtitle);
+            std::vector<std::pair<std::size_t, std::size_t> > ls =
+                wrapSub(subtitle.text, 78 - ind);
+            for (std::size_t r = 0; r < 2; ++r) {
+                std::string head;
+                if (r == 0) {
+                    head = subtitle.isDialogue ? ("　　【" + subtitle.speaker + "】")
+                                               : std::string("　　");
+                } else {
+                    head.assign(static_cast<std::size_t>(ind), ' ');
+                }
+                std::string body;
+                if (r < ls.size()) {
+                    std::size_t b = ls[r].first;
+                    std::size_t e = ls[r].second;
+                    std::size_t shownB = static_cast<std::size_t>(subtitle.shown);
+                    if (b < shownB) {
+                        if (e > shownB) e = shownB;
+                        body = subtitle.text.substr(b, e - b);
+                    }
+                }
+                renderer_.printLine(head + body, subtitle.color.c_str());
+            }
+        }
 
         // 折行保护：地图显示宽度超过终端时给出醒目提示（否则显示/鼠标都会错乱）
         int needCols = map_.width() * 2;
@@ -1012,7 +1184,8 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                 return false;
             };
             bool isTarget = findExit(here);
-            // 门 / 窗：站在旁边一格也算「可以互动」，否则走到门前会以为没反应。
+            // 门 / 窗 / 站在地图上的人：站在旁边一格也算「可以互动」，
+            // 否则走到门前会以为没反应。
             std::string beside;
             if (here.empty()) {
                 static const int dxy[4][2] = {{1,0},{-1,0},{0,1},{0,-1}};
@@ -1020,23 +1193,27 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                     int nx = map_.playerX() + dxy[i][0];
                     int ny = map_.playerY() + dxy[i][1];
                     if (!map_.inBounds(nx, ny)) continue;
-                    std::string cc = map_.cellAt(nx, ny);
-                    if (cc != "窗" && cc != "门" && !map_.isDoorCell(nx, ny)) continue;
+                    if (map_.isWalkable(nx, ny) && !map_.isDoorCell(nx, ny)) continue;
                     std::string l = map_.locAt(nx, ny);
                     if (findExit(l)) { beside = l; break; }
                 }
             }
+            // 同一件事，不同的说法：窗是「查看」，碑是「存档」，人得「说话」。
+            auto actWord = [](const std::string& loc) -> std::string {
+                if (loc == "窗") return "查看";
+                if (loc == "记事碑") return "存档";
+                if (loc == "上司" || loc == "同事") return "说话";
+                return "打开";
+            };
             if (needCols > termCols) {
                 hint = "⚠ 地图需 " + std::to_string(needCols) + " 列，当前仅 " +
                        std::to_string(termCols) + " 列，请拉宽窗口！";
                 hc = color::RED;
             } else if (!here.empty() && isTarget) {
-                hint = "· 你正站在【" + here + "】上。按回车" +
-                       (here == "窗" ? std::string("查看") : std::string("打开")) + "。";
+                hint = "· 你正站在【" + here + "】上。按回车" + actWord(here) + "。";
                 hc = color::GOLD;
             } else if (!beside.empty()) {
-                hint = "· 你旁边是【" + beside + "】。按回车" +
-                       (beside == "窗" ? std::string("查看") : std::string("打开")) + "。";
+                hint = "· 你旁边是【" + beside + "】。按回车" + actWord(beside) + "。";
                 hc = color::GOLD;
             } else if (!here.empty()) {
                 hint = "· 现在还不是来【" + here + "】的时候。";
@@ -1076,11 +1253,14 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                 start = pos + 1;
             }
         }
-        renderer_.printLine("　　〔方向键/WASD 走　鼠标点击走　数字键直达　座位上回车互动〕",
+        renderer_.printLine(corridorMap
+            ? std::string("　　〔方向键/WASD 走　鼠标点走　数字键直达　拱门走过去就换一段　碑上回车存档〕")
+            : std::string("　　〔方向键/WASD 走　鼠标点击走　数字键直达　座位上回车互动〕"),
                             color::DIM);
 
         endFrame();
         if (g_mapInputHook) g_mapInputHook->onFrame(++frameNo, frameLines_);
+        }   // end of 需要重画
 
         // 读取输入事件：可能是按键，也可能是鼠标左键点击
         int mx = 0, my = 0;
@@ -1097,12 +1277,21 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             g_clickQueue.pop_front();
             isClick = true;
         } else {
-            std::pair<int, bool> ev = readEventPair(mx, my);
-            k = ev.first;
-            isClick = ev.second;
+            // 没有按键就**不能阻塞**：必须马上回到循环开头，让字幕打字机自己往下吐字。
+            // 之前这里无条件阻塞读键，结果地图一进来字幕就停住，每按一次回车才蹦出一个字。
+            if (!input::kbhit()) {
+                k = input::KEY_NONE;
+                isClick = false;
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            } else {
+                std::pair<int, bool> ev = readEventPair(mx, my);
+                k = ev.first;
+                isClick = ev.second;
+            }
         }
 
         // 沿给定路径逐格移动并逐步重绘（自动走过去的动画）。
+        // 一路走过回廊的拱门，就当场切图（不再走完剩下的路）。
         auto walkAlong = [&](const std::vector<char>& path) {
             for (std::size_t i = 0; i < path.size(); ++i) {
                 switch (path[i]) {
@@ -1112,6 +1301,8 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                     case 'R': map_.movePlayer(1, 0); break;
                     default: break;
                 }
+                checkAuto();
+                if (autoTriggered) return;
                 renderer_.clear();
                 renderer_.newline();
                 renderer_.printCentered("—— " + map_.title() + " ——", color::CYAN);
@@ -1135,14 +1326,29 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             }
         } else if (k == input::KEY_UP || k == 'w' || k == 'W') {
             map_.movePlayer(0, -1);
+            checkAuto();
         } else if (k == input::KEY_DOWN || k == 's' || k == 'S') {
             map_.movePlayer(0, 1);
+            checkAuto();
         } else if (k == input::KEY_LEFT || k == 'a' || k == 'A') {
             map_.movePlayer(-1, 0);
+            checkAuto();
         } else if (k == input::KEY_RIGHT || k == 'd' || k == 'D') {
             map_.movePlayer(1, 0);
+            checkAuto();
         } else if (k == input::KEY_ENTER || k == input::KEY_SPACE) {
-            if (triggerHere()) return false;
+            // 清晨开场那行字还挂在屏幕下方：第一下回车把它一次显示完，
+            // 第二下回车收起来。这时候不触发任何互动，免得把开场白和「打开门」混在一起。
+            if (subtitle.remainMs > 0) {
+                if (subtitle.shown < static_cast<int>(subtitle.text.size())) {
+                    subtitle.shown = static_cast<int>(subtitle.text.size());
+                } else {
+                    subtitle.remainMs = 0;
+                    subtitle.text.clear();
+                }
+            } else if (triggerHere()) {
+                return false;
+            }
         } else if (k >= '1' && k <= '9') {
             // 数字键直达：自动寻路到对应地点（门直接走到门上，窗走到旁边）。
             // 到这里自己按回车就互动，所以走到位即停，不会自动触发剧情。
@@ -1158,6 +1364,23 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             MenuAct act = systemMenu(script, pc, flags);
             if (act == MenuAct::Title || act == MenuAct::Quit) return true;
             if (act == MenuAct::Reload) return false;   // script/pc/flags 已就地更新
+        }
+
+        // 刚才那一步迈进了拱门 / 拐角：切图，runMap 结束
+        if (autoTriggered) return false;
+
+        // 回廊里闲逛太久：四不相自己会催一句。
+        // 只有「真的什么都没按」才算闲逛——看着字幕、翻页都不算。
+        if (corridorMap) {
+            if (k == input::KEY_NONE && !isClick) idleMs += elapsedMs;
+            else idleMs = 0;
+            if (idleMs >= kIdleNagMs) {
+                idleMs = 0;
+                if (subtitle.remainMs == 0) {
+                    setSub(true, "四不相", "不能闲逛了……要迟到了。", color::AMBER);
+                    lastDrawnSig.clear();   // 逼着立刻重画一次，字幕马上出来
+                }
+            }
         }
     }
     if (g_mapInputHook) g_mapInputHook->onEnd();

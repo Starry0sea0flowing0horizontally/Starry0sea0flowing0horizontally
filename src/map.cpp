@@ -388,6 +388,258 @@ void Map::loadStoreroom() {
 }
 
 // ============================================================================
+//  天庭回廊（seg = 1..4）
+//  一条会拐弯的长回廊，四段各一个形状：
+//    · 西廊     —— 笔直的一段（40×7）
+//    · 中廊     —— 走到一半向南折下去，尽头再往西摊开（L 形，40×12）
+//    · 东廊     —— 先向东、再折向南、最后又折回向东（S 形，40×12）
+//    · 困兽府前 —— 走到尽头摊开一片小广场，困兽府就在广场最里头（40×10）
+//  做法：先把整张图填满「墙」，再把要走的格子「挖」成空地，
+//  所以拐弯、死角、广场都只是「挖法」不同，走法还是同一套。
+//
+//  每段都有：
+//    · 两头各一个拱门（青）：走上去就自动切到相邻那段，不用按回车；
+//    · 两旁的墙上有神仙府邸的门（紫）：按回车才推得开；
+//    · 一块「记事碑」（金）：站在上面按回车就能存档。
+// ============================================================================
+void Map::loadCorridor(int seg) {
+    if (seg < 1) seg = 1;
+    if (seg > 4) seg = 4;
+    const std::string wantId = "corridor" + std::to_string(seg);
+    if (id_ == wantId) return;          // 同一段：不重建（保住玩家站位）
+
+    const int W = 40;
+    int H = 7;
+    if (seg == 2 || seg == 3) H = 12;
+    else if (seg == 4) H = 10;
+
+    const std::string S = "\xE3\x80\x80";      // 空地（全角空格）
+    const std::string WALL = "\xE5\xA2\x99";   // 墙
+    std::vector<std::vector<std::string> > g(
+        static_cast<std::size_t>(H),
+        std::vector<std::string>(static_cast<std::size_t>(W), WALL));
+
+    const int keepX = px_;
+    const int keepY = py_;
+    const bool prevCorridor = (id_.compare(0, 8, "corridor") == 0);
+
+    locByCell_.clear();     // 回廊不画图例
+    locAt_.clear();
+    doorCells_.clear();
+    autoAt_.clear();
+
+    // 挖出一块可走的空地（含端点）
+    auto carve = [&](int x0, int y0, int x1, int y1) {
+        for (int y = y0; y <= y1; ++y) {
+            if (y < 0 || y >= H) continue;
+            for (int x = x0; x <= x1; ++x) {
+                if (x < 0 || x >= W) continue;
+                g[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] = S;
+            }
+        }
+    };
+    auto put = [&](int x, int y, const std::string& c) {
+        if (x < 0 || x >= W || y < 0 || y >= H) return;
+        g[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] = c;
+    };
+    // 门：嵌在墙上，但可以走上去（门是出口，不是墙）
+    auto door = [&](int x, int y, const std::string& name) {
+        put(x, y, S);
+        doorCells_.push_back(std::make_pair(x, y));
+        locAt_[std::make_pair(x, y)] = name;
+    };
+    // 拱门：走上去立刻切图的格子
+    auto arch = [&](int x, int y, const std::string& name) {
+        put(x, y, S);
+        locAt_[std::make_pair(x, y)] = name;
+        autoAt_[std::make_pair(x, y)] = name;
+    };
+    // 窗：嵌在墙里，站不上去，站在旁边按回车看
+    auto win = [&](int x, int y) {
+        put(x, y, "窗");
+        locAt_[std::make_pair(x, y)] = "窗";
+    };
+    // 柱子：挡路（isWallCell 认「柱」），把一进进的长廊隔开
+    auto pillar = [&](int x, int y) { put(x, y, "柱"); };
+    // 记事碑：这一段的存档点
+    auto save = [&](int x, int y) {
+        put(x, y, "碑");
+        locAt_[std::make_pair(x, y)] = "记事碑";
+    };
+
+    if (seg == 1) {
+        title_ = "三 · 天庭回廊 · 西廊";
+        carve(1, 1, 38, 5);
+        door(8, 0, "白泽府");
+        door(26, 0, "獬豸府");
+        door(14, 6, "杂物司");
+        win(34, 0);
+        pillar(6, 2);  pillar(6, 4);
+        pillar(22, 2); pillar(22, 4);
+        pillar(32, 2); pillar(32, 4);
+        save(12, 1);
+        arch(0, 3, "回廊西口");
+        arch(39, 3, "回廊东口");
+    } else if (seg == 2) {
+        title_ = "回廊 · 中廊";
+        carve(1, 1, 38, 4);      // 东西向的主廊
+        carve(29, 4, 34, 10);    // 走到一半向南折下去的竖廊
+        carve(24, 7, 34, 10);    // 尽头向西摊开的一段
+        door(6, 0, "斗姆宫");
+        door(18, 0, "月老祠");
+        door(39, 2, "药王殿");
+        door(35, 7, "织云坊");
+        win(10, 0);
+        pillar(14, 2); pillar(14, 4);
+        pillar(26, 2); pillar(26, 4);
+        save(8, 1);
+        arch(0, 3, "回廊西口");
+        arch(31, 11, "回廊南口");
+    } else if (seg == 3) {
+        title_ = "回廊 · 东廊";
+        carve(1, 1, 22, 4);      // 上段：向东
+        carve(18, 4, 22, 8);     // 中段：折向南
+        carve(18, 8, 38, 10);    // 下段：再折回向东
+        door(6, 0, "九尾府");
+        door(14, 0, "文昌阁");
+        door(28, 11, "鹿蜀府");
+        win(36, 11);
+        pillar(10, 2); pillar(10, 4);
+        pillar(32, 10);
+        save(4, 1);
+        arch(0, 2, "回廊西口");
+        arch(39, 9, "回廊东口");
+    } else {
+        title_ = "回廊 · 困兽府前";
+        carve(1, 1, 38, 4);      // 主廊
+        carve(26, 4, 38, 8);     // 尽头摊开的广场
+        door(10, 0, "文书阁");
+        door(39, 5, "困兽府");
+        win(20, 0);
+        pillar(16, 2); pillar(16, 4);
+        pillar(32, 8);
+        save(5, 1);
+        arch(0, 2, "回廊西口");
+        // 东头没有拱门：回廊到这里就到头了，再往前是困兽府的门
+    }
+
+    tiles_ = g;
+    id_ = wantId;
+    night_ = false;
+
+    // 站位：从别的回廊走回来就留在原地；否则回到西头（脚本里会显式给坐标）
+    if (prevCorridor && isWalkable(keepX, keepY)) {
+        px_ = keepX;
+        py_ = keepY;
+    } else {
+        px_ = 1;
+        py_ = (seg == 1) ? 3 : 2;
+    }
+}
+
+std::string Map::autoExitAt(int x, int y) const {
+    std::map<std::pair<int, int>, std::string>::const_iterator it =
+        autoAt_.find(std::make_pair(x, y));
+    return (it != autoAt_.end()) ? it->second : std::string();
+}
+
+// ============================================================================
+//  文书阁：四不相干活的地方
+//  一进门就是一排排桌案，桌上摊着纸、压着笔山、搁着砚台；
+//  两个同事埋头抄写，最里头那张桌边上站着上司。
+//  格子含义：
+//    墙  墙壁
+//    ·   地板（全角空格）
+//    桌  桌案（两张拼一案）      椅  凳子
+//    笔  毛笔                    墨  砚台            纸  纸
+//    简  摞起来的竹简            卷  摊开的文卷        灯  油灯
+//    柜  木柜                    窗  窗                门  门（通回廊）
+//    僚  同事（挡路，站在旁边按回车说话）
+//    司  上司（同上）
+//    相  玩家（四不相）
+// ============================================================================
+void Map::loadOffice() {
+    if (id_ == "office") return;
+
+    const int W = 40;
+    const int H = 11;
+    const std::string S = "\xE3\x80\x80";
+    const std::string WALL = "\xE5\xA2\x99";
+    std::vector<std::vector<std::string> > g(
+        static_cast<std::size_t>(H),
+        std::vector<std::string>(static_cast<std::size_t>(W), WALL));
+    auto put = [&](int x, int y, const std::string& c) {
+        if (x < 0 || x >= W || y < 0 || y >= H) return;
+        g[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] = c;
+    };
+    for (int y = 1; y <= 9; ++y)
+        for (int x = 1; x <= 38; ++x) put(x, y, S);
+
+    locByCell_.clear();
+    locAt_.clear();
+    doorCells_.clear();
+    autoAt_.clear();
+
+    // 摆一件「可以按回车」的东西：格子字 + 地点名
+    auto prop = [&](int x, int y, const std::string& c, const std::string& name) {
+        put(x, y, c);
+        locAt_[std::make_pair(x, y)] = name;
+    };
+    auto desk = [&](int x, int y) { prop(x, y, "桌", "桌子"); };
+    auto chair = [&](int x, int y) { prop(x, y, "椅", "椅子"); };
+
+    // 上墙正中的窗；下墙的门（回廊那头）
+    put(20, 0, "窗");
+    locAt_[std::make_pair(20, 0)] = "窗";
+    put(3, 10, "门");
+    doorCells_.push_back(std::make_pair(3, 10));
+    locAt_[std::make_pair(3, 10)] = "门";
+
+    // 靠墙堆着的公文
+    prop(5, 1, "简", "竹简");
+    prop(6, 1, "卷", "文卷");
+
+    // 第一张桌案：同事甲
+    desk(8, 3);  desk(9, 3);
+    chair(8, 4); chair(9, 4);
+    prop(10, 3, "笔", "毛笔");
+    prop(10, 4, "墨", "砚台");
+    prop(11, 4, "纸", "纸");
+    prop(9, 2, "僚", "同事");
+
+    // 第二张桌案：同事乙
+    desk(16, 3);  desk(17, 3);
+    chair(16, 4); chair(17, 4);
+    prop(18, 3, "笔", "毛笔");
+    prop(18, 4, "墨", "砚台");
+    prop(19, 4, "纸", "纸");
+    prop(17, 2, "僚", "同事");
+
+    // 第三张桌案：今天没人坐，纸上压着一方镇纸
+    desk(24, 3);  desk(25, 3);
+    chair(24, 4); chair(25, 4);
+    prop(26, 4, "纸", "纸");
+
+    prop(30, 3, "灯", "油灯");
+    prop(36, 2, "柜", "木柜");
+
+    // 最里头：上司的桌案
+    desk(32, 7);
+    desk(36, 7);
+    chair(33, 8);
+    chair(35, 8);
+    prop(30, 7, "灯", "油灯");
+    prop(34, 7, "司", "上司");
+
+    tiles_ = g;
+    id_ = "office";
+    title_ = "四 · 文书阁";
+    night_ = false;
+    px_ = 5;
+    py_ = 9;
+}
+
+// ============================================================================
 //  深夜 · 床脚开花
 //  四不遇走了以后，床脚那朵「荼蘼」才开出来。直接往 tiles_ 里补一格「花」，
 //  它立刻是一个可站立、可按回车互动的地点（地点 id = 荼蘼花）。
@@ -431,7 +683,8 @@ bool Map::inBounds(int x, int y) const {
 static bool isWallCell(const std::string& cell) {
     return cell == "墙" || cell == "#" || cell == "┌" || cell == "─" || cell == "┐" ||
            cell == "│" || cell == "└" || cell == "┘" || cell == "┬" ||
-           cell == "┴" || cell == "┆";
+           cell == "┴" || cell == "┆" || cell == "柱" ||   // 「柱」= 回廊的柱子，挡路
+           cell == "僚" || cell == "司";                   // 同事 / 上司：人也是挡路的
 }
 
 bool Map::isWalkable(int x, int y) const {
@@ -629,7 +882,13 @@ void Map::renderWith(Renderer& r, const std::string& highlightLoc,
                 c = (loc == highlightLoc) ? color::GOLD : color::PURPLE;
             } else {
                 std::string loc = locAt(x, y);
-                if (isWallCell(cell)) {
+                if (cell == "僚") {
+                    c = color::WHITE;    // 同事：一身白，伏在案上抄写
+                } else if (cell == "司") {
+                    c = color::PURPLE;   // 上司：深色官袍
+                } else if (cell == "碑") {
+                    c = color::GOLD;     // 记事碑：存档点，隔着一整条回廊也看得见
+                } else if (isWallCell(cell)) {
                     c = color::GRAY;   // 满屏「墙」字，用暗灰避免喧宾夺主
                 } else if (cell == "门") {
                     c = color::PURPLE; // 兼容：旧数据里直接写在墙上的门字

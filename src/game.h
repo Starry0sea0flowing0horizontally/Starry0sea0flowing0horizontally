@@ -62,6 +62,11 @@ private:
     void playChapter(const std::string& chapter);
     void playFromSave(int slot);
     void skipSavePrompt(Script& script, std::size_t& pc);  // 读档跳过「是否存档」提示
+    // 按「label + 偏移」还原读档位置（偏移 0 时跳过锚点自身那一段，避免多出一句旁白）
+    static std::size_t resolveResume(const Script& script, const std::string& label,
+                                     std::size_t offset);
+    // 旧存档（无 resume 行）只有裸 pc：把它退到最近的段落边界（地图/清屏/场景标题）
+    static std::size_t snapToBoundary(const Script& script, std::size_t pc);
 
     Script buildChapter(const std::string& chapter);
     void runScript(Script& script, std::size_t& pc, Flags& flags);
