@@ -490,7 +490,9 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
     if (n.mapId == "dorm_night") map_.loadDormNight();
     else if (n.mapId == "dorm_morning") map_.loadDormMorning();
     else if (n.mapId == "storeroom") map_.loadStoreroom();
-    else if (n.mapId == "office") map_.loadOffice();
+    // 文书阁：有地图角色时说明「上司正走过来」，桌后先不摆那一格，
+    // 否则会同时画出两个上司（桌后一个、走过来的一个）。
+    else if (n.mapId == "office") map_.loadOffice(n.mapActors.empty());
     else if (n.mapId == "dorm") map_.loadDorm();
     else if (n.mapId.size() > 8 && n.mapId.compare(0, 8, "corridor") == 0)
         map_.loadCorridor(n.mapId[8] - '0');     // corridor1..4
@@ -1012,7 +1014,7 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                 } else {
                     renderer_.printLine(playerSleeping
                         ? std::string("　　遇 = 四不遇　　你还在睡着，一动也动不了　　空格 / 回车 继续")
-                        : std::string("　　遇 = 四不遇　　相 = 你　　〔方向键/WASD 你也能走〕"),
+                        : std::string("　　演出中，你先别动　　〔空格 / 回车〕继续"),
                         color::DIM);
                 }
             }
@@ -1117,6 +1119,11 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                 if (triggerHere()) return false;
                 break;
             }
+            // 这张图上没有「床」这种收尾出口（回廊撞四不遇、文书阁上司走过来）：
+            // 演员演完就把操控权交回剧本，接着往下一句走。
+            // pc 必须往前走一格，否则状态机会把这张地图再跑一遍。
+            pc++;
+            return false;
         }
 
         // 画面指纹：位置 / 字幕进度 / 地图都没变就完全不重画。
@@ -1203,6 +1210,7 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                 if (loc == "窗") return "查看";
                 if (loc == "记事碑") return "存档";
                 if (loc == "上司" || loc == "同事") return "说话";
+                if (loc == "花坛" || loc == "铜鼎") return "查看";
                 return "打开";
             };
             if (needCols > termCols) {

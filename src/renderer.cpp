@@ -444,17 +444,19 @@ void Renderer::showImage(const std::string& imageId) {
         if (plain && plain[0] == '1' && plain[1] == '\0') return;
 
         // 留 4 行给上面的空行和下面的「按任意键」
-        const bool wide = g_termWidth >= cover_art::kLargeWidth &&
-                          g_termHeight >= cover_art::kLargeHeight + 4;
-        const bool small = g_termWidth >= cover_art::kSmallWidth &&
-                           g_termHeight >= cover_art::kSmallHeight + 4;
-        if (!wide && !small) {                 // 窗口装不下，硬画会折行/滚动
+        // 变量名不能叫 small：Windows SDK 的 rpcndr.h 里有 #define small char，
+        // 一到 MSVC 下就变成「const bool char」，报 C2632。
+        const bool fitLarge = g_termWidth >= cover_art::kLargeWidth &&
+                              g_termHeight >= cover_art::kLargeHeight + 4;
+        const bool fitSmall = g_termWidth >= cover_art::kSmallWidth &&
+                              g_termHeight >= cover_art::kSmallHeight + 4;
+        if (!fitLarge && !fitSmall) {          // 窗口装不下，硬画会折行/滚动
             printLine("〔 画面太小，建议把窗口拉宽到 80 列、高到 30 行以上 〕", color::DIM);
             return;
         }
-        const int w = wide ? cover_art::kLargeWidth : cover_art::kSmallWidth;
-        const int h = wide ? cover_art::kLargeHeight : cover_art::kSmallHeight;
-        const char* const* lines = wide ? cover_art::kLarge : cover_art::kSmall;
+        const int w = fitLarge ? cover_art::kLargeWidth : cover_art::kSmallWidth;
+        const int h = fitLarge ? cover_art::kLargeHeight : cover_art::kSmallHeight;
+        const char* const* lines = fitLarge ? cover_art::kLarge : cover_art::kSmall;
 
         printArt(lines, w, h, g_termWidth, g_termHeight, nullptr);
         newline();

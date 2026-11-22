@@ -409,9 +409,7 @@ void Map::loadCorridor(int seg) {
     if (id_ == wantId) return;          // 同一段：不重建（保住玩家站位）
 
     const int W = 40;
-    int H = 7;
-    if (seg == 2 || seg == 3) H = 12;
-    else if (seg == 4) H = 10;
+    const int H = (seg == 4) ? 12 : 13;
 
     const std::string S = "\xE3\x80\x80";      // 空地（全角空格）
     const std::string WALL = "\xE5\xA2\x99";   // 墙
@@ -466,60 +464,111 @@ void Map::loadCorridor(int seg) {
         put(x, y, "碑");
         locAt_[std::make_pair(x, y)] = "记事碑";
     };
+    // 地形装饰：花坛（坛）、树、池水、水渠、石阶、高台、铜鼎、屏风。
+    // 全都挡路（isWallCell 认这些字），只能看、不能踩——回廊才不是一条空走廊。
+    auto deco = [&](int x, int y, const char* c) { put(x, y, c); };
+    auto decoRect = [&](int x0, int y0, int x1, int y1, const char* c) {
+        for (int y = y0; y <= y1; ++y)
+            for (int x = x0; x <= x1; ++x) deco(x, y, c);
+    };
+    // 既能看、也能按回车看一句的装饰
+    auto look = [&](int x, int y, const char* c, const std::string& name) {
+        put(x, y, c);
+        locAt_[std::make_pair(x, y)] = name;
+    };
 
     if (seg == 1) {
         title_ = "三 · 天庭回廊 · 西廊";
-        carve(1, 1, 38, 5);
-        door(8, 0, "白泽府");
-        door(26, 0, "獬豸府");
-        door(14, 6, "杂物司");
-        win(34, 0);
-        pillar(6, 2);  pillar(6, 4);
-        pillar(22, 2); pillar(22, 4);
-        pillar(32, 2); pillar(32, 4);
-        save(12, 1);
-        arch(0, 3, "回廊西口");
-        arch(39, 3, "回廊东口");
+        carve(1, 1, 38, 11);
+        // 两排廊柱，把这一段分成「中殿 + 东西两条侧廊」
+        for (int y = 2; y <= 10; y += 2) {
+            pillar(10, y);
+            pillar(29, y);
+        }
+        // 左侧两畦花坛，右侧一池静水，西头一段石阶，南墙下两只铜鼎
+        decoRect(3, 2, 5, 2, "坛");
+        decoRect(3, 9, 5, 9, "坛");
+        decoRect(34, 4, 36, 5, "池");
+        deco(35, 2, "树");
+        deco(35, 9, "树");
+        decoRect(7, 11, 8, 11, "阶");
+        deco(13, 11, "鼎");
+        deco(26, 11, "鼎");
+        decoRect(24, 1, 25, 1, "屏");
+        look(4, 2, "坛", "花坛");
+        door(6, 0, "白泽府");
+        door(22, 0, "獬豸府");
+        door(6, 12, "杂物司");
+        win(36, 0);
+        save(20, 6);
+        arch(0, 5, "回廊西口");
+        arch(39, 5, "回廊东口");
+        arch(33, 0, "回廊北口");
     } else if (seg == 2) {
         title_ = "回廊 · 中廊";
-        carve(1, 1, 38, 4);      // 东西向的主廊
-        carve(29, 4, 34, 10);    // 走到一半向南折下去的竖廊
-        carve(24, 7, 34, 10);    // 尽头向西摊开的一段
+        carve(1, 1, 38, 5);       // 东西向的主廊
+        carve(26, 5, 38, 11);     // 东头向南折下去的一条
+        carve(8, 6, 25, 11);      // 折下来再向西摊开的大院
+        // 院心一畦抬高的花坛：从这儿过，得绕着走
+        decoRect(12, 7, 22, 8, "坛");
+        deco(10, 7, "树");
+        deco(10, 10, "树");
+        decoRect(16, 10, 18, 10, "池");
+        deco(2, 1, "鼎");
+        deco(6, 4, "鼎");
+        pillar(14, 2); pillar(14, 4);
+        pillar(24, 2); pillar(24, 4);
+        put(32, 0, "窗");        // 墙上的一扇窗，只是好看
         door(6, 0, "斗姆宫");
         door(18, 0, "月老祠");
-        door(39, 2, "药王殿");
-        door(35, 7, "织云坊");
-        win(10, 0);
-        pillar(14, 2); pillar(14, 4);
-        pillar(26, 2); pillar(26, 4);
-        save(8, 1);
+        door(39, 4, "药王殿");
+        door(39, 8, "织云坊");
+        save(20, 4);
         arch(0, 3, "回廊西口");
-        arch(31, 11, "回廊南口");
+        arch(33, 0, "回廊北口");
+        arch(8, 12, "回廊南口");
+        arch(39, 2, "回廊东门");
     } else if (seg == 3) {
         title_ = "回廊 · 东廊";
-        carve(1, 1, 22, 4);      // 上段：向东
-        carve(18, 4, 22, 8);     // 中段：折向南
-        carve(18, 8, 38, 10);    // 下段：再折回向东
+        carve(1, 1, 22, 5);       // 上段：向东
+        carve(18, 5, 22, 9);      // 中段：折向南
+        carve(18, 9, 38, 11);     // 下段：再折回向东
+        decoRect(8, 1, 9, 1, "坛");
+        decoRect(8, 3, 9, 3, "阶");    // 廊心一段抬起来的石阶，得从两边绕过
+        deco(4, 5, "鼎");
+        decoRect(24, 10, 25, 10, "树");
+        decoRect(30, 10, 31, 10, "台");
+        decoRect(34, 10, 35, 10, "屏");
+        deco(21, 6, "渠");
+        deco(21, 7, "渠");
+        pillar(14, 2); pillar(14, 4);
+        pillar(26, 10);
         door(6, 0, "九尾府");
         door(14, 0, "文昌阁");
-        door(28, 11, "鹿蜀府");
-        win(36, 11);
-        pillar(10, 2); pillar(10, 4);
-        pillar(32, 10);
-        save(4, 1);
-        arch(0, 2, "回廊西口");
-        arch(39, 9, "回廊东口");
+        door(30, 12, "鹿蜀府");
+        win(36, 12);
+        save(4, 3);
+        arch(0, 3, "回廊西口");
+        arch(22, 0, "回廊北口");
+        arch(20, 12, "回廊南口");
+        arch(39, 10, "回廊东口");
     } else {
         title_ = "回廊 · 困兽府前";
-        carve(1, 1, 38, 4);      // 主廊
-        carve(26, 4, 38, 8);     // 尽头摊开的广场
+        carve(1, 1, 38, 4);       // 主廊
+        carve(24, 4, 38, 10);     // 尽头摊开的广场
+        decoRect(6, 1, 8, 1, "坛");
+        decoRect(12, 1, 13, 1, "屏");
+        decoRect(34, 2, 35, 2, "屏");
+        pillar(18, 2); pillar(18, 4);
+        pillar(30, 8);
+        look(28, 7, "鼎", "铜鼎");
+        deco(32, 8, "鼎");
         door(10, 0, "文书阁");
-        door(39, 5, "困兽府");
+        door(39, 6, "困兽府");
         win(20, 0);
-        pillar(16, 2); pillar(16, 4);
-        pillar(32, 8);
-        save(5, 1);
+        save(5, 2);
         arch(0, 2, "回廊西口");
+        arch(30, 0, "回廊北口");
         // 东头没有拱门：回廊到这里就到头了，再往前是困兽府的门
     }
 
@@ -533,7 +582,7 @@ void Map::loadCorridor(int seg) {
         py_ = keepY;
     } else {
         px_ = 1;
-        py_ = (seg == 1) ? 3 : 2;
+        py_ = (seg == 1) ? 5 : 2;
     }
 }
 
@@ -544,25 +593,25 @@ std::string Map::autoExitAt(int x, int y) const {
 }
 
 // ============================================================================
-//  文书阁：四不相干活的地方
-//  一进门就是一排排桌案，桌上摊着纸、压着笔山、搁着砚台；
-//  两个同事埋头抄写，最里头那张桌边上站着上司。
-//  格子含义：
-//    墙  墙壁
-//    ·   地板（全角空格）
-//    桌  桌案（两张拼一案）      椅  凳子
-//    笔  毛笔                    墨  砚台            纸  纸
-//    简  摞起来的竹简            卷  摊开的文卷        灯  油灯
-//    柜  木柜                    窗  窗                门  门（通回廊）
+//  文书阁：四不相干活的地方（40×16，一大间）
+//  两排长案，八个同事伏在案上抄写，四不相自己的桌子空着；
+//  最里头是上司的桌。格子含义：
+//    墙  墙壁                      ·   地板（全角空格）
+//    桌  桌案（两张拼一案）        椅  凳子
+//    笔  毛笔                      墨  砚台            纸  纸
+//    简  摞起来的竹简              卷  摊开的文卷        灯  油灯
+//    柜  木柜                      窗  窗                门  门（通回廊）
 //    僚  同事（挡路，站在旁边按回车说话）
 //    司  上司（同上）
 //    相  玩家（四不相）
+//  出口表压在 9 项以内（数字键 1~9 才够用）：笔 / 墨 / 纸 一律叫「笔墨」，
+//  竹简 / 文卷 一律叫「案卷」，凳子只是家具、不登记地点。
 // ============================================================================
-void Map::loadOffice() {
-    if (id_ == "office") return;
+void Map::loadOffice(bool bossPresent) {
+    if (id_ == "office" && bossHere_ == bossPresent) return;
 
     const int W = 40;
-    const int H = 11;
+    const int H = 16;
     const std::string S = "\xE3\x80\x80";
     const std::string WALL = "\xE5\xA2\x99";
     std::vector<std::vector<std::string> > g(
@@ -572,7 +621,7 @@ void Map::loadOffice() {
         if (x < 0 || x >= W || y < 0 || y >= H) return;
         g[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] = c;
     };
-    for (int y = 1; y <= 9; ++y)
+    for (int y = 1; y <= 14; ++y)
         for (int x = 1; x <= 38; ++x) put(x, y, S);
 
     locByCell_.clear();
@@ -585,58 +634,80 @@ void Map::loadOffice() {
         put(x, y, c);
         locAt_[std::make_pair(x, y)] = name;
     };
+    // 一张桌案 = 两张拼起来的桌子
     auto desk = [&](int x, int y) { prop(x, y, "桌", "桌子"); };
-    auto chair = [&](int x, int y) { prop(x, y, "椅", "椅子"); };
+    // 凳子：只是家具，站得上去，不另说
+    auto chair = [&](int x, int y) { put(x, y, "椅"); };
+    // 笔墨纸砚归成一处「笔墨」，竹简文卷归成一处「案卷」，
+    // 这样出口表能压到 9 项以内——数字键 1~9 才够用。
+    auto ink = [&](int x, int y, const char* c) { prop(x, y, c, "笔墨"); };
+    auto paper = [&](int x, int y, const char* c) { prop(x, y, c, "案卷"); };
+    auto lamp = [&](int x, int y) { prop(x, y, "灯", "油灯"); };
+    auto cabinet = [&](int x, int y) { prop(x, y, "柜", "木柜"); };
+    auto clerk = [&](int x, int y) { prop(x, y, "僚", "同事"); };
+    // 一张「有人用」的桌案：桌、椅、纸、墨、伏案的人
+    auto workstation = [&](int x, int y, bool used) {
+        desk(x, y);         desk(x + 1, y);
+        paper(x + 2, y, "纸");
+        chair(x, y + 1);    chair(x + 1, y + 1);
+        ink(x + 2, y + 1, "墨");
+        if (used) clerk(x, y - 1);
+    };
 
-    // 上墙正中的窗；下墙的门（回廊那头）
-    put(20, 0, "窗");
-    locAt_[std::make_pair(20, 0)] = "窗";
-    put(3, 10, "门");
-    doorCells_.push_back(std::make_pair(3, 10));
-    locAt_[std::make_pair(3, 10)] = "门";
+    // 上墙两扇窗，下墙一扇门（回廊那头）
+    prop(12, 0, "窗", "窗");
+    prop(28, 0, "窗", "窗");
+    put(3, 15, "门");
+    doorCells_.push_back(std::make_pair(3, 15));
+    locAt_[std::make_pair(3, 15)] = "门";
 
     // 靠墙堆着的公文
-    prop(5, 1, "简", "竹简");
-    prop(6, 1, "卷", "文卷");
+    paper(6, 1, "简");
+    paper(7, 1, "卷");
+    paper(36, 1, "简");
+    paper(32, 1, "卷");
 
-    // 第一张桌案：同事甲
-    desk(8, 3);  desk(9, 3);
-    chair(8, 4); chair(9, 4);
-    prop(10, 3, "笔", "毛笔");
-    prop(10, 4, "墨", "砚台");
-    prop(11, 4, "纸", "纸");
-    prop(9, 2, "僚", "同事");
+    // ---- 第一排桌案：四个同事，一人一案 ----
+    workstation(5, 3, true);
+    workstation(11, 3, true);
+    workstation(17, 3, true);
+    workstation(23, 3, true);
+    // 四不相自己的桌子（他进门之前，这儿一直空着）
+    desk(29, 3);   desk(30, 3);
+    ink(31, 3, "笔");
+    paper(31, 4, "纸");
+    chair(29, 4);  chair(30, 4);
 
-    // 第二张桌案：同事乙
-    desk(16, 3);  desk(17, 3);
-    chair(16, 4); chair(17, 4);
-    prop(18, 3, "笔", "毛笔");
-    prop(18, 4, "墨", "砚台");
-    prop(19, 4, "纸", "纸");
-    prop(17, 2, "僚", "同事");
+    // ---- 第二排桌案：又是四个同事 ----
+    workstation(5, 8, true);
+    workstation(11, 8, true);
+    workstation(17, 8, true);
+    workstation(23, 8, true);
 
-    // 第三张桌案：今天没人坐，纸上压着一方镇纸
-    desk(24, 3);  desk(25, 3);
-    chair(24, 4); chair(25, 4);
-    prop(26, 4, "纸", "纸");
+    // ---- 靠下墙的一排家什 ----
+    cabinet(2, 12);
+    cabinet(2, 13);
+    paper(8, 12, "简");
+    paper(9, 12, "卷");
+    lamp(20, 12);
+    lamp(26, 12);
+    paper(33, 12, "简");
 
-    prop(30, 3, "灯", "油灯");
-    prop(36, 2, "柜", "木柜");
-
-    // 最里头：上司的桌案
-    desk(32, 7);
-    desk(36, 7);
-    chair(33, 8);
-    chair(35, 8);
-    prop(30, 7, "灯", "油灯");
-    prop(34, 7, "司", "上司");
+    // ---- 最里头：上司的桌案 ----
+    if (bossPresent) prop(34, 2, "司", "上司");
+    desk(33, 3);  desk(34, 3);
+    chair(33, 4); chair(34, 4);
+    lamp(31, 3);
+    paper(32, 4, "纸");
+    cabinet(37, 3);
 
     tiles_ = g;
     id_ = "office";
     title_ = "四 · 文书阁";
     night_ = false;
-    px_ = 5;
-    py_ = 9;
+    bossHere_ = bossPresent;
+    px_ = 4;
+    py_ = 13;
 }
 
 // ============================================================================
@@ -645,6 +716,7 @@ void Map::loadOffice() {
 //  它立刻是一个可站立、可按回车互动的地点（地点 id = 荼蘼花）。
 //  只有深夜那张图会调用。
 // ============================================================================
+
 void Map::bloomFlower() {
     if (tiles_.empty()) return;
     const int fx = 5;
@@ -684,7 +756,10 @@ static bool isWallCell(const std::string& cell) {
     return cell == "墙" || cell == "#" || cell == "┌" || cell == "─" || cell == "┐" ||
            cell == "│" || cell == "└" || cell == "┘" || cell == "┬" ||
            cell == "┴" || cell == "┆" || cell == "柱" ||   // 「柱」= 回廊的柱子，挡路
-           cell == "僚" || cell == "司";                   // 同事 / 上司：人也是挡路的
+           cell == "坛" || cell == "树" || cell == "池" ||   // 花坛 / 树 / 池水
+           cell == "渠" || cell == "阶" || cell == "台" ||   // 水渠 / 石阶 / 高台
+           cell == "鼎" || cell == "屏" ||                   // 铜鼎 / 屏风
+           cell == "僚" || cell == "司";                     // 同事 / 上司：人也是挡路的
 }
 
 bool Map::isWalkable(int x, int y) const {
@@ -888,6 +963,14 @@ void Map::renderWith(Renderer& r, const std::string& highlightLoc,
                     c = color::PURPLE;   // 上司：深色官袍
                 } else if (cell == "碑") {
                     c = color::GOLD;     // 记事碑：存档点，隔着一整条回廊也看得见
+                } else if (cell == "坛" || cell == "树") {
+                    c = color::GREEN;    // 花坛 / 树
+                } else if (cell == "池" || cell == "渠") {
+                    c = color::CYAN;     // 池水 / 水渠
+                } else if (cell == "鼎") {
+                    c = color::AMBER;    // 铜鼎
+                } else if (cell == "屏") {
+                    c = color::PURPLE;   // 屏风
                 } else if (isWallCell(cell)) {
                     c = color::GRAY;   // 满屏「墙」字，用暗灰避免喧宾夺主
                 } else if (cell == "门") {

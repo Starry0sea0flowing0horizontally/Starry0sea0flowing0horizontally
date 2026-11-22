@@ -44,9 +44,11 @@ public:
     // 返回该格登记的地点名，不是这种格子返回 ""。
     std::string autoExitAt(int x, int y) const;
 
-    // 「文书阁」：四不相干活的地方——一屋子桌子、椅子、笔墨纸砚、竹简，
-    // 两个同事，还有站在最里头那张桌边上的上司。
-    void loadOffice();
+    // 「文书阁」：四不相干活的地方——三排桌案、八个伏案的同事、笔墨纸砚、
+    // 竹简文卷、油灯木柜，最里头是上司的桌（40×16，一大间）。
+    // bossPresent=false 时不摆上司那一格：开场演出里上司是「走过来的地图角色」，
+    // 他站在那儿会被画成两个人（桌后一个 + 走过来的一个）。
+    void loadOffice(bool bossPresent = true);
 
     // 已加载的地图 id / 显示标题（用于抬头与图例）
     const std::string& id() const;
@@ -115,6 +117,7 @@ private:
     int px_ = 0;                              // 玩家列坐标 x
     int py_ = 0;                              // 玩家行坐标 y
     bool night_ = false;                      // 是否是「深夜」版本（整屏压暗）
+    bool bossHere_ = true;                    // 文书阁：上司现在在不在桌后那个人
 };
 
 }  // namespace game

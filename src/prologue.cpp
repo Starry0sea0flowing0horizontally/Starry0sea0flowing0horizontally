@@ -537,8 +537,11 @@ Script buildPrologue() {
     // =====================================================================
     //  三、天庭，回廊
     //  一条会拐弯的四段长回廊：西廊 → 中廊（向南折）→ 东廊（S 形）→ 困兽府前。
-    //  · 每段两头各开一个拱门，**走上去就换段**，不用按回车；
+    //  · 每段都**不止一个出口**：东头、北头、南头、屋顶都开着拱门，
+    //    走上去就换段，不用按回车——走错了就得绕一圈，回廊本来就是这样；
     //  · 两旁的墙上立着神仙府邸，要按回车才推得开；
+    //  · 回廊本身也不是一条空走廊：廊柱、花坛、池水、水渠、石阶、高台、
+    //    铜鼎、屏风，该绕的地方就得绕，该看的东西凑近了能看；
     //  · 每段都立着一块「记事碑」，站在上面按回车就能存档；
     //  · 一进中廊就撞上四不遇：那一段玩家**完全不能操作**，脚自己往前撞，
     //    台词全部念完才把操控权还回来；
@@ -547,29 +550,34 @@ Script buildPrologue() {
     // =====================================================================
 
     // 回廊每一段各有一份出口表。地点名必须和 map.cpp 里登记的完全一致，
-    // 差一个字就点不动。拱门（回廊西口 / 回廊东口 / 回廊南口）是「自动门」：
-    // 走上去就换段，不用按回车。记事碑是存档点。
+    // 差一个字就点不动。拱门是「自动门」：走上去就换段，不用按回车。
+    // 记事碑是存档点；窗 / 花坛 / 铜鼎是「凑近了按回车看一眼」的地方。
     std::vector<MapExit> c1 = {
         {"回廊西口", "corridor1_west"},
         {"回廊东口", "corridor2_start"},
+        {"回廊北口", "corridor2_start"},
         {"白泽府", "mansion_baize"},
         {"獬豸府", "mansion_xiezhi"},
         {"杂物司", "mansion_zawu"},
         {"记事碑", "corridor1_save"},
         {"窗", "corridor1_window"},
+        {"花坛", "corridor1_flower"},
     };
     std::vector<MapExit> c2 = {
         {"回廊西口", "corridor1_east"},
+        {"回廊北口", "corridor1_north"},
         {"回廊南口", "corridor3_start"},
+        {"回廊东门", "corridor3_start"},
         {"斗姆宫", "mansion_doumu"},
         {"月老祠", "mansion_yuelao"},
         {"药王殿", "mansion_yaowang"},
         {"织云坊", "mansion_zhiyun"},
         {"记事碑", "corridor2_save"},
-        {"窗", "corridor2_window"},
     };
     std::vector<MapExit> c3 = {
         {"回廊西口", "corridor2_east"},
+        {"回廊北口", "corridor2_north"},
+        {"回廊南口", "corridor4_start"},
         {"回廊东口", "corridor4_start"},
         {"九尾府", "mansion_jiuwei"},
         {"文昌阁", "mansion_wenchang"},
@@ -579,10 +587,12 @@ Script buildPrologue() {
     };
     std::vector<MapExit> c4 = {
         {"回廊西口", "corridor3_east"},
+        {"回廊北口", "corridor3_north"},
         {"文书阁", "office"},
         {"困兽府", "mansion_kunshou"},
         {"记事碑", "corridor4_save"},
         {"窗", "corridor4_window"},
+        {"铜鼎", "corridor4_ding"},
     };
 
     // ---- 进回廊：先让地图立起来，旁白挂在地图下面一句一句说 ----
@@ -593,29 +603,33 @@ Script buildPrologue() {
         MapActor nar;
         nar.id = "narrator";
         nar.name = "旁白";
-        nar.x = 1;
-        nar.y = 3;
+        nar.x = 2;
+        nar.y = 5;
         nar.unseen = true;   // 不画在地图上，只负责把话挂到地图下方
         nar.steps.push_back(ScriptBuilder::actNarr(
             "天庭的走廊很长。晨光从高大的窗棂间漏下来，在地砖上切成一段一段的光格，像一道一道看不见的栅栏。"));
         nar.steps.push_back(ScriptBuilder::actNarr(
-            "四不相叼着公文一路狂奔，后蹄在光洁的地砖上打滑。文书阁在回廊最里头——要穿过西廊、中廊、东廊，再拐到困兽府前那一段。"));
+            "两排廊柱高得快顶到梁上。柱脚边是花坛、铜鼎、半人高的屏风，廊下还凿着一条水渠，水声细得像有人在很远的地方翻书。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "这条回廊岔口很多：东头、北头、南头都开着拱门，走错一个就得绕着天庭多跑半个圈。"));
         nar.steps.push_back(ScriptBuilder::actSay("四不相", "借过……借过……要迟到了……",
                                                  speaker::SIBUXIANG));
         nar.steps.push_back(ScriptBuilder::actFinish());
 
         std::vector<MapActor> actors;
         actors.push_back(nar);
-        b.mapWithActors("corridor1", 2, 3, c1, actors);
+        b.mapWithActors("corridor1", 2, 5, c1, actors);
     }
 
-    // ---- 西廊（笔直的一段）----
+    // ---- 西廊（两排廊柱、花坛、一池静水，三个拱门）----
     b.label("corridor1_start");
-    b.map("corridor1", 2, 3, c1);
+    b.map("corridor1", 2, 5, c1);
     b.label("corridor1_back");
     b.map("corridor1", -1, -1, c1);       // 负数坐标 = 留在原地，看完东西回到门前
     b.label("corridor1_east");
-    b.map("corridor1", 38, 3, c1);        // 从中廊往西折返：落在西廊东头
+    b.map("corridor1", 38, 5, c1);        // 从中廊往西折返：落在西廊东头
+    b.label("corridor1_north");
+    b.map("corridor1", 33, 1, c1);        // 从中廊北口绕回来：落在西廊北阶底下
 
     b.label("corridor1_west");
     b.narr("回廊在这里拐下去，通往宿舍那一头。楼梯上落着一层薄灰，连个脚印都没有。");
@@ -628,6 +642,11 @@ Script buildPrologue() {
 
     b.label("corridor1_window");
     b.narr("窗外的云压得很低，一片一片，像没抄完的纸。");
+    b.jump("corridor1_back");
+
+    b.label("corridor1_flower");
+    b.narr("花坛里种着一栏白花，开得很整齐，整齐得不像自己长出来的。");
+    b.narr("四不相认得这花。春天最后开的那种。可他一时想不起名字，只觉得鼻尖发酸。");
     b.jump("corridor1_back");
 
     b.label("mansion_baize");
@@ -649,7 +668,7 @@ Script buildPrologue() {
     b.narr("可他从来没来过这儿。他连这个名字都是刚才才看见的。");
     b.jump("corridor1_back");
 
-    // ---- 中廊（走到一半向南折下去）：一进来就撞上四不遇 ----
+    // ---- 中廊（向东、再向南折下去，院心一畦花坛）：一进来就撞上四不遇 ----
     b.label("corridor2_start");
     b.branch("met_sibuyu", "1", "corridor2_plain");
     {
@@ -702,6 +721,8 @@ Script buildPrologue() {
         actors.push_back(yu);
         b.mapWithActors("corridor2", 2, 3, c2, actors);
     }
+    // 演完了：清屏，接着往下走（操控权在这里交回给玩家，见 office / corridor2_after）
+    b.cls();
     b.setFlag("met_sibuyu", "1");
     b.narr("四不相抱着公文往南边跑。跑过光与暗的分界，跑过一根一根廊柱。他没有回头。");
     b.narr("他觉得自己应该回头。可他没有。他不知道自己错过了什么。");
@@ -720,14 +741,12 @@ Script buildPrologue() {
     b.label("corridor2_after");
     b.map("corridor2", -1, -1, c2);
     b.label("corridor2_east");
-    b.map("corridor2", 31, 10, c2);       // 从东廊折返：落在南口前
+    b.map("corridor2", 8, 11, c2);        // 从东廊往西折返：落在南口前的大院里
+    b.label("corridor2_north");
+    b.map("corridor2", 33, 1, c2);        // 从东廊北口绕回来：落在中廊北拱门下
 
     b.label("corridor2_save");
     b.savePrompt();
-    b.jump("corridor2_back");
-
-    b.label("corridor2_window");
-    b.narr("窗半开着，风灌进来，把廊下的灯笼吹得贴到了墙上。");
     b.jump("corridor2_back");
 
     b.label("mansion_doumu");
@@ -750,13 +769,15 @@ Script buildPrologue() {
     b.narr("风一吹，云就丝丝缕缕地散开，散到一半又被谁的手收了回去。");
     b.jump("corridor2_back");
 
-    // ---- 东廊（S 形：向东、折向南、再折回向东）----
+    // ---- 东廊（S 形：向东、折向南、再折回向东；廊心有石阶、廊下有水渠）----
     b.label("corridor3_start");
-    b.map("corridor3", 2, 2, c3);
+    b.map("corridor3", 2, 3, c3);
     b.label("corridor3_back");
     b.map("corridor3", -1, -1, c3);
     b.label("corridor3_east");
-    b.map("corridor3", 38, 9, c3);        // 从困兽府前折返：落在东廊东头
+    b.map("corridor3", 38, 10, c3);       // 从困兽府前折返：落在东廊东头
+    b.label("corridor3_north");
+    b.map("corridor3", 22, 1, c3);        // 从困兽府前绕北口回来：落在东廊北头
 
     b.label("corridor3_save");
     b.savePrompt();
@@ -795,6 +816,11 @@ Script buildPrologue() {
     b.narr("窗棂上积着灰。从这个角度看出去，正好能看见困兽府的屋脊，黑压压的一条。");
     b.jump("corridor4_back");
 
+    b.label("corridor4_ding");
+    b.narr("广场角上立着一只半人高的铜鼎，鼎身刻着缠在一处的鳞和爪，刻得太深，摸上去硌手。");
+    b.narr("鼎里没有香，只有一层积了很多年的灰。四不相看了两眼，缩回了手。");
+    b.jump("corridor4_back");
+
     b.label("mansion_kunshou");
     b.narr("困兽府的门是黑的，比回廊里别的门都黑，黑得连门环都看不见。");
     b.narr("门前没有灯，也没有人。门上没有封条，也没有名字——只刻着一个字：「封」。");
@@ -803,143 +829,103 @@ Script buildPrologue() {
     b.jump("corridor4_back");
 
     // =====================================================================
-    //  四、文书阁：四不相干活的地方（一个能走的地图）
-    //  一屋子桌案，同事伏在案上抄写，最里头站着上司。
-    //  进门的几句旁白挂在地图下方；跟谁说话、看什么东西都按回车。
+    //  四、文书阁：四不相干活的地方（一个能走的地图，40×16 的一大间）
+    //  一进门，最里头那个上司就放下竹简走了过来——这一段玩家**不能操作**，
+    //  方向盘、WASD、鼠标点击全部不响应，只有空格 / 回车能翻台词；
+    //  台词全部念完、他转身走回桌后，操控权才交回来。
+    //  之后可以在屋里自由走动：跟同事打听、翻自己桌上的东西、从门出去。
     // =====================================================================
     std::vector<MapExit> officeExits = {
-        {"上司", "office_boss"},
+        {"上司", "office_boss_again"},
         {"同事", "office_colleague"},
         {"桌子", "office_desk"},
-        {"椅子", "office_chair"},
-        {"毛笔", "office_brush"},
-        {"砚台", "office_ink"},
-        {"门", "corridor4_back"},
-        {"窗", "office_window"},
-        {"纸", "office_paper"},
-        {"竹简", "office_bamboo"},
-        {"文卷", "office_scroll"},
+        {"笔墨", "office_ink"},
+        {"案卷", "office_scroll"},
         {"油灯", "office_lamp"},
         {"木柜", "office_cabinet"},
+        {"窗", "office_window"},
+        {"门", "office_leave"},
     };
     b.label("office");
     b.branch("office_intro_seen", "1", "office_reenter");
     b.setFlag("office_intro_seen", "1");
     {
-        MapActor nar;
-        nar.id = "narrator";
-        nar.name = "旁白";
-        nar.x = 3;
-        nar.y = 9;
-        nar.unseen = true;
-        nar.steps.push_back(ScriptBuilder::actNarr(
-            "文书阁里一股旧纸、陈墨和人身上的暖气。天光从高窗上下来，落在两排桌案之间，浮着一层细灰。"));
-        nar.steps.push_back(ScriptBuilder::actNarr(
-            "两个同事已经伏在案上抄了半日，笔尖沙沙地响，谁也没抬头。"));
-        nar.steps.push_back(ScriptBuilder::actNarr(
-            "最里头那张桌边上站着一个人，官袍沉沉地垂着，正低头看手里的一卷竹简。"));
-        nar.steps.push_back(ScriptBuilder::actFinish());
+        // 上司：从最里头那张桌后一路走过来，说完再走回去。
+        // 他的出场格就是桌后那一格——地图上先不摆「司」，免得画成两个人。
+        MapActor boss;
+        boss.id = "shangsi";
+        boss.name = "上司";
+        boss.glyph = "司";
+        boss.color = speaker::SHANGSI;
+        boss.x = 34;
+        boss.y = 2;
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "文书阁的门在身后合上，一股旧纸、陈墨和许多人身上的暖气扑面而来。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "屋里比他想的还要满：两排长案，伏在案上抄写的人一个挨着一个，笔尖沙沙地响，谁也没抬头。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "最里头那张桌后的人放下竹简，绕过桌角，一步一步朝他走了过来。"));
+        boss.steps.push_back(ScriptBuilder::actMove(4, 13, 90));   // 一路走到门口，停在四不相跟前
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "四不相抱着公文，站在门边，一格也不敢挪。"));
+        boss.steps.push_back(ScriptBuilder::actSay("上司", "又踩点。", speaker::SHANGSI));
+        boss.steps.push_back(ScriptBuilder::actSay("四不相",
+            "对……对不起……我路上撞到了人……", speaker::SIBUXIANG));
+        boss.steps.push_back(ScriptBuilder::actSay("上司", "撞到人了？", speaker::SHANGSI));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "上司挑了一下眉，目光落在四不相身上——毛发乱糟糟的，爪尖缺了一小块。他忽然笑了一下。"));
+        boss.steps.push_back(ScriptBuilder::actSay("上司", "撞到谁了？这么大阵仗。", speaker::SHANGSI));
+        boss.steps.push_back(ScriptBuilder::actSay("四不相",
+            "……困兽府的、典狱长大人……", speaker::SIBUXIANG));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "上司的笑容僵了一瞬。他手里的竹简放下来了，眼神从「敷衍」变成了「审慎」。"));
+        boss.steps.push_back(ScriptBuilder::actSay("上司", "典狱长？你撞到四不遇了？", speaker::SHANGSI));
+        boss.steps.push_back(ScriptBuilder::actSay("四不相", "……是。", speaker::SIBUXIANG));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "上司沉默了一会儿。他重新打量了一下这只白毛麒麟——正缩着脖子，像一只等着被踹的旧棉絮。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "典狱长都没说什么，他再追究，倒显得自己比典狱长还大牌了。"));
+        boss.steps.push_back(ScriptBuilder::actSay("上司",
+            "行了。下次再迟到，自己去交调任文书。不用等我来批。", speaker::SHANGSI));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "他转身走回最里头，竹简重新拿起来，像什么都没发生过。"));
+        boss.steps.push_back(ScriptBuilder::actMove(34, 2, 120));   // 说完再转身走回最里头
+        // ---- 上司走了：剩下的都是四不相自己的心思 ----
+        // 这一段不再 cls 掉地图：台词全部挂在这张地图的**下方**字幕条里，
+        // 玩家一边看着文书阁（上司已经回到最里头那张桌后），一边按空格往下读。
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "四不相站在原地，爪尖还抱着那摞竹简，前爪边缘渗着一丝极淡的暗金色——是刚才撞到典狱长时蹭出来的。"));
+        boss.steps.push_back(ScriptBuilder::actNarr("他低头看着那一丝颜色，愣了一下。"));
+        boss.steps.push_back(ScriptBuilder::actSay("四不相", "……暗金色的血？", speaker::SIBUXIANG));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "他举起那只爪尖，对着窗漏进来的光看了看。暗金色的，很淡，像混进白色绒毛里的一线将熄未熄的余烬。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "他翻来覆去看了好一会儿，想不起来自己怎么会流这种颜色的血。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "最后，他把爪尖那一点暗金色擦掉了。他不知道自己为什么擦掉它。他只是觉得，留着那一点颜色，心口会更疼。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "他拿起笔，蘸墨，低头抄写。笔尖落在纸上的时候，他停了一下。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "他想起那双眼睛。琥珀色的。整个天庭都知道的典狱长，手段狠辣、不近人情。可那双眼睛看他的时候，为什么像在求他？"));
+        boss.steps.push_back(ScriptBuilder::actSay("四不相", "……他为什么那样看我？", speaker::SIBUXIANG));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "他问完愣了一下。他只是一个抄文书的，连迟到都要被罚的那种。典狱长怎么看他，跟他有什么关系？"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "可写了两个字，笔又停了。他忽然发现，自己在回想那个声音——「你走吧，我不怪你。」"));
+        boss.steps.push_back(ScriptBuilder::actNarr("那个声音很轻，像怕压碎什么。可他为什么要怕压碎我？"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "他把笔搁下，站起来，走到窗边，看着窗纸上破碎的光。风从破了的窗纸缝里渗进来，凉凉的，扑在他脸上。"));
+        boss.steps.push_back(ScriptBuilder::actSay("四不相", "……我们见过吗？", speaker::SIBUXIANG));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "没有人回答他。他站在窗边，看着灰白色的天光从云缝里漏下来，落在窗台的石沿上。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "他的胸口又酸了一下，又空了一下，像有什么东西正被一只看不见的手从里面掏走，一点一点地，掏了一万年。"));
+        boss.steps.push_back(ScriptBuilder::actFinish());
 
         std::vector<MapActor> actors;
-        actors.push_back(nar);
-        b.mapWithActors("office", 5, 9, officeExits, actors);
+        actors.push_back(boss);
+        b.mapWithActors("office", 4, 13, officeExits, actors);
     }
-
-    b.label("office_reenter");
-    b.map("office", 5, 9, officeExits);
-
-    b.label("office_plain");
-    b.map("office", -1, -1, officeExits);
-
-    b.label("office_colleague");
-    b.narr("隔壁案的同事抬起头，笔尖还在滴墨，在纸上洇出一个圆点。");
-    b.say("同事", "四不相？你脸怎么这么白。", speaker::SHANGSI);
-    b.say("同事", "一大早的，撞见谁了？", speaker::SHANGSI);
-    b.say("四不相", "……没、没有。走路急。", speaker::SIBUXIANG);
-    b.narr("同事「哦」了一声，低头继续抄。抄了两笔，又想起什么似的补了一句。");
-    b.say("同事", "上司一早就来了。在你那张桌子边上站了半天，又回里头去了。", speaker::SHANGSI);
-    b.narr("四不相的心往下一沉。");
-    b.jump("office_plain");
-
-    b.label("office_desk");
-    b.narr("昨天没抄完的文卷还摊在桌上，纸边被他自己的爪印蹭得发黑。");
-    b.narr("笔架上的笔没洗，墨干在笔尖上，硬得像一根小骨头。");
-    b.jump("office_plain");
-
-    b.label("office_chair");
-    b.narr("凳子少了一条腿，底下垫着一块叠了三次的旧纸。坐上去会晃，但还能坐。");
-    b.jump("office_plain");
-
-    b.label("office_brush");
-    b.narr("笔杆上有一圈牙印——是他自己咬的。抄到眼睛发花的时候，他就咬笔杆。");
-    b.jump("office_plain");
-
-    b.label("office_ink");
-    b.narr("砚池里的墨是新磨的，凉。磨墨的人很用力，池边溅出来几点。");
-    b.jump("office_plain");
-
-    b.label("office_paper");
-    b.narr("一沓空白纸，纸角裁得齐整。用了半沓——今天还有半沓要填满。");
-    b.jump("office_plain");
-
-    b.label("office_bamboo");
-    b.narr("竹简按日子码成一摞，最上面那卷是今天早会上要交的。");
-    b.narr("他伸手把它抽出来，又塞了回去——先跟里头那位说清楚，再说别的。");
-    b.jump("office_plain");
-
-    b.label("office_scroll");
-    b.narr("摊开的文卷上有一行抄了一半的字，墨迹断在半句上。昨天就是抄到这儿被打断的。");
-    b.jump("office_plain");
-
-    b.label("office_lamp");
-    b.narr("灯还亮着，灯芯剪过，火苗很稳。这一屋子的白天，都要靠它撑到天黑。");
-    b.jump("office_plain");
-
-    b.label("office_cabinet");
-    b.narr("木柜里是一格一格的档卷，标签上写着年份。最早的那一格，灰厚得能写字。");
-    b.jump("office_plain");
-
-    b.label("office_window");
-    b.narr("窗外是回廊的廊顶，灰白色的一大片，看不见天。");
-    b.jump("office_plain");
-
-    // ---- 走到上司跟前，按回车说话：四、文书阁的正戏从这儿开始 ----
-    b.label("office_boss");
-
-    // =====================================================================
-    //  四、文书阁（含玩家内心选择）
-    // =====================================================================
-    b.scene("四 · 文书阁", "scene_office");
-    b.narr("四不相抱着公文，一步一步挪到最里头那张桌前。");
-    b.narr("上司手里捏着一卷竹简，不紧不慢地翻着。听见脚步声，他抬了一下眼皮，嘴角微微弯了一下——那种「我就知道你会迟到」的笑，浮在脸上。");
-    b.say("上司", "又踩点。", speaker::SHANGSI);
-    b.say("四不相", "对……对不起……我路上撞到了人……", speaker::SIBUXIANG);
-    b.say("上司", "撞到人了？", speaker::SHANGSI);
-    b.narr("上司挑了一下眉，目光落在四不相身上——毛发乱糟糟的，爪尖缺了一小块。他忽然笑了一下。");
-    b.say("上司", "撞到谁了？这么大阵仗。", speaker::SHANGSI);
-    b.say("四不相", "……困兽府的、典狱长大人……", speaker::SIBUXIANG);
-    b.narr("上司的笑容僵了一瞬。他手里的竹简放下来了，眼神从「敷衍」变成了「审慎」。");
-    b.say("上司", "典狱长？你撞到四不遇了？", speaker::SHANGSI);
-    b.say("四不相", "……是。", speaker::SIBUXIANG);
-    b.narr("上司沉默了一会儿。他重新打量了一下这只白毛麒麟——正缩着脖子，像一只等着被踹的旧棉絮。");
-    b.narr("典狱长都没说什么，他再追究，倒显得自己比典狱长还大牌了。");
-    b.say("上司", "行了。下次再迟到，自己去交调任文书。不用等我来批。", speaker::SHANGSI);
-    b.narr("他转身走了。四不相站在原地，爪尖还抱着那摞竹简，前爪边缘渗着一丝极淡的暗金色——是刚才撞到典狱长时蹭出来的。");
-    b.narr("他低头看着那一丝颜色，愣了一下。");
-    b.say("四不相", "……暗金色的血？", speaker::SIBUXIANG);
-    b.narr("他举起那只爪尖，对着窗漏进来的光看了看。暗金色的，很淡，像混进白色绒毛里的一线将熄未熄的余烬。");
-    b.narr("他翻来覆去看了好一会儿，想不起来自己怎么会流这种颜色的血。");
-    b.narr("最后，他把爪尖那一点暗金色擦掉了。他不知道自己为什么擦掉它。他只是觉得，留着那一点颜色，心口会更疼。");
-    b.narr("他拿起笔，蘸墨，低头抄写。笔尖落在纸上的时候，他停了一下。");
-    b.narr("他想起那双眼睛。琥珀色的。整个天庭都知道的典狱长，手段狠辣、不近人情。可那双眼睛看他的时候，为什么像在求他？");
-    b.say("四不相", "……他为什么那样看我？", speaker::SIBUXIANG);
-    b.narr("他问完愣了一下。他只是一个抄文书的，连迟到都要被罚的那种。典狱长怎么看他，跟他有什么关系？");
-    b.narr("可写了两个字，笔又停了。他忽然发现，自己在回想那个声音——「你走吧，我不怪你。」");
-    b.narr("那个声音很轻，像怕压碎什么。可他为什么要怕压碎我？");
-    b.narr("他把笔搁下，站起来，走到窗边，看着窗纸上破碎的光。风从破了的窗纸缝里渗进来，凉凉的，扑在他脸上。");
-    b.say("四不相", "……我们见过吗？", speaker::SIBUXIANG);
-    b.narr("没有人回答他。他站在窗边，看着灰白色的天光从云缝里漏下来，落在窗台的石沿上。");
-    b.narr("他的胸口又酸了一下，又空了一下，像有什么东西正被一只看不见的手从里面掏走，一点一点地，掏了一万年。");
 
     // ---- 内心选择（演示选择 / 变量 / 分支，为后续「温茶」结局铺垫） ----
     b.choice("你的心口泛着说不清的酸涩。这一刻，你想——", {
@@ -966,8 +952,67 @@ Script buildPrologue() {
     b.narr("他把绒毛贴在胸口，闭上了眼睛。再睁开时，琥珀色的光在眼底闪了一下，又暗下去了。");
     b.narr("他站起来，转身走回困兽府的方向。缺了一点的尾巴尖在风里晃了晃，像一根快要燃尽的香，还在撑着最后一寸不肯灭。");
 
-    // ---- 回到值守室（回廊这条路今天已经跑过了，这里不再让他走一遍） ----
+    // ---- 回到文书阁：正戏演完，操控权交回来，可以走一圈再出门 ----
+    b.jump("office_free");
+
+    b.label("office_free");
+    b.map("office", 4, 13, officeExits);
+
+    b.label("office_plain");      // 看完东西 / 说完话，回到原地
+    b.map("office", -1, -1, officeExits);
+
+    b.label("office_reenter");    // 从回廊再进来（开场那一趟已经演过了）
+    b.map("office", 4, 13, officeExits);
+
+    b.label("office_leave");      // 推门出去：天已经黑了，回值守室
+    b.narr("他推开门。回廊里的灯一盏一盏亮起来，天已经黑了。");
     b.jump("duty_night");
+
+    b.label("office_boss_again");
+    b.narr("上司头也没抬，笔尖在纸上顿了一下。");
+    b.say("上司", "还站着？文书自己会抄完吗。", speaker::SHANGSI);
+    b.say("四不相", "……是。", speaker::SIBUXIANG);
+    b.jump("office_plain");
+
+    b.label("office_colleague");
+    b.narr("隔壁案的同事抬起头，笔尖还在滴墨，在纸上洇出一个圆点。");
+    b.say("同事", "四不相？你脸怎么这么白。", speaker::SHANGSI);
+    b.say("同事", "一大早的，撞见谁了？", speaker::SHANGSI);
+    b.say("四不相", "……没、没有。走路急。", speaker::SIBUXIANG);
+    b.narr("同事「哦」了一声，低头继续抄。抄了两笔，又想起什么似的补了一句。");
+    b.say("同事", "上司今天心情倒是好。刚走过去那一趟，回来居然没摔竹简。", speaker::SHANGSI);
+    b.narr("四不相的心往下一沉。");
+    b.jump("office_plain");
+
+    b.label("office_desk");
+    b.narr("他这张桌子靠着窗，木纹里嵌着一层洗不掉的旧墨。");
+    b.narr("昨天没抄完的文卷还摊在桌上，纸边被他自己的爪印蹭得发黑。");
+    b.narr("笔架上的笔没洗，墨干在笔尖上，硬得像一根小骨头。");
+    b.jump("office_plain");
+
+    b.label("office_ink");
+    b.narr("砚池里的墨是新磨的，凉。磨墨的人很用力，池边溅出来几点。");
+    b.narr("一沓空白纸，纸角裁得齐整。用了半沓——今天还有半沓要填满。");
+    b.jump("office_plain");
+
+    b.label("office_scroll");
+    b.narr("竹简按日子码成一摞，最上面那卷是今天早会上要交的。");
+    b.narr("摊开的文卷上有一行抄了一半的字，墨迹断在半句上。昨天就是抄到这儿被打断的。");
+    b.jump("office_plain");
+
+    b.label("office_lamp");
+    b.narr("灯还亮着，灯芯剪过，火苗很稳。这一屋子的白天，都要靠它撑到天黑。");
+    b.jump("office_plain");
+
+    b.label("office_cabinet");
+    b.narr("木柜里是一格一格的档卷，标签上写着年份。最早的那一格，灰厚得能写字。");
+    b.jump("office_plain");
+
+    b.label("office_window");
+    b.narr("窗外是回廊的廊顶，灰白色的一大片，看不见天。");
+    b.narr("窗纸有一处破了，风从那儿渗进来，吹得案上的纸角一动一动。");
+    b.jump("office_plain");
+
     b.label("duty_night");
 
     // =====================================================================
