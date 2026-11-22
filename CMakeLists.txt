@@ -1,9 +1,9 @@
 # ============================================================================
 #  花至荼蘼（同人视觉小说）—— CMake 构建配置
-#  纯标准 C++11，零第三方依赖，跨平台（Windows / Linux / macOS）
+#  纯标准 C++23，零第三方依赖，跨平台（Windows / Linux / macOS）
 # ============================================================================
-cmake_minimum_required(VERSION 3.10)
-project(huazhitumi LANGUAGES CXX)
+cmake_minimum_required(VERSION 4.3)
+project(huazhitumi VERSION 1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,3 +38,29 @@ else()
   # 确保中文源码以 UTF-8 读取、字符串以 UTF-8 编码
   target_compile_options(huazhitumi PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
 endif()
+
+install(TARGETS huazhitumi
+  RUNTIME DESTINATION .
+)
+install(DIRECTORY assets/
+  DESTINATION assets
+)
+
+set(CPACK_PACKAGE_NAME "huazhitumi")
+set(CPACK_PACKAGE_VERSION "${PROJECT_VERSION}")
+set(CPACK_PACKAGE_VENDOR "zgteam233")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "花至荼蘼 - 同人视觉小说")
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+
+if(MSVC)
+  set(CPACK_GENERATOR "ZIP")
+  set(CPACK_PACKAGE_FILE_NAME "huazhitumi-${PROJECT_VERSION}-win64-msvc")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  set(CPACK_GENERATOR "TGZ")
+  set(CPACK_PACKAGE_FILE_NAME "huazhitumi-${PROJECT_VERSION}-anylinux64-gcc")
+else()
+  set(CPACK_GENERATOR "TGZ")
+  set(CPACK_PACKAGE_FILE_NAME "huazhitumi-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}")
+endif()
+
+include(CPack)

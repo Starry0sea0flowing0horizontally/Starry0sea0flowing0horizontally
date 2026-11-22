@@ -40,11 +40,16 @@ huazhitumi/
 
 ## 二、编译与运行
 
-> 本项目需要支持 **C++23** 的编译器，以及 [CMake](https://cmake.org/) 和 [Ninja](https://ninja-build.org/)（Windows 构建脚本使用 Ninja）。中文源码统一采用 **UTF-8 编码**。
+> 本项目需要支持 **C++23** 的编译器，以及 [CMake 4.3](https://cmake.org/) 及以上和 [Ninja](https://ninja-build.org/)（Windows 构建脚本使用 Ninja）。中文源码统一采用 **UTF-8 编码**。
 
 ### 方式 A：下载预编译包 (推荐)
 
-目前仓库尚未发布预编译包。请使用下面的构建方式自行编译；发布包含预编译包的正式版本后，本节会补充下载链接与校验方式。
+| 平台 | 下载 |
+| --- | --- |
+| Windows 64 位（MSVC） | [huazhitumi-1.0.0-win64-msvc.zip](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.0/huazhitumi-1.0.0-win64-msvc.zip) |
+| Linux 64 位（GCC） | [huazhitumi-1.0.0-anylinux64-gcc.tar.gz](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.0/huazhitumi-1.0.0-anylinux64-gcc.tar.gz) |
+
+下载后解压到任意目录，并从解压目录运行 `huazhitumi.exe`（Windows）或 `./huazhitumi`（Linux）。两份压缩包均包含运行所需的 `assets/` 资源；存档会在首次运行时于解压目录中创建。
 
 ### 方式 B：PowerShell 构建脚本
 
@@ -75,6 +80,15 @@ cmake --build build
 - Linux/macOS：`./build/huazhitumi`
 
 若系统已配置 CMake 可用的编译器，但未安装 Ninja，也可以移除 `-G Ninja`，改由 CMake 根据环境选择默认生成器。
+
+生成与现有 Release 一致格式的压缩包：
+
+```bash
+cpack --config build/CPackConfig.cmake
+```
+
+Windows 会生成 `huazhitumi-1.0.0-win64-msvc.zip`，Linux 会生成 `huazhitumi-1.0.0-anylinux64-gcc.tar.gz`。
+
 ---
 
 ## 三、操作说明
