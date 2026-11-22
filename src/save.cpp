@@ -1,12 +1,19 @@
 // ============================================================================
-//  花至荼蘼 —— 多槽存档系统实现（纯文本格式，无第三方依赖）
+//  花至荼蘼 —— 多槽存档系统实现（tar.gz 压缩，多槽）
 // ============================================================================
 #include "save.h"
 #include "config.h"
 
+#include <archive.h>
+#include <archive_entry.h>
+
 #include <fstream>
+#include <sstream>
 #include <ctime>
 #include <cerrno>
+#include <iterator>
+#include <limits>
+#include <vector>
 
 #ifdef _WIN32
 #include <direct.h>   // _mkdir
@@ -211,39 +218,90 @@ std::string cleanForUi(const std::string& in, std::size_t maxBytes) {
     return cut;
 }
 
-}  // namespace
+bool createTarGz(const std::string& contents, std::string& compressed) {
+    const std::size_t overhead = contents.size() / 100 + 65536;
+    if (contents.size() > std::numeric_limits<std::size_t>::max() - overhead) return false;
+    std::vector<char> buffer(contents.size() + overhead);
+    std::size_t used = 0;
 
-bool SaveManager::save(int slot, const SaveData& data) {
-    if (!ensureDir()) return false;
-
-    std::ofstream f(pathFor(slot).c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
-    if (!f) return false;
-
-    f << "version " << SAVE_FORMAT_VERSION << "\n";
-    f << "chapter " << sanitizeValue(data.chapter) << "\n";
-    f << "pc " << data.pc << "\n";
-    // 读档锚点：label 名 + 偏移（旧版本没有这行，读不到就退回裸 pc）
-    if (!data.resumeLabel.empty()) {
-        f << "resume " << sanitizeValue(data.resumeLabel) << " "
-          << data.resumeOffset << "\n";
+    struct archive* writer = archive_write_new();
+    if (!writer) return false;
+    bool ok = archive_write_add_filter_gzip(writer) == ARCHIVE_OK &&
+              archive_write_set_format_pax_restricted(writer) == ARCHIVE_OK &&
+              archive_write_open_memory(writer, buffer.data(), buffer.size(), &used) == ARCHIVE_OK;
+    if (ok) {
+        struct archive_entry* entry = archive_entry_new();
+        if (!entry) {
+            ok = false;
+        } else {
+            archive_entry_set_pathname(entry, "save");
+            archive_entry_set_filetype(entry, AE_IFREG);
+            archive_entry_set_perm(entry, 0644);
+            if (contents.size() > static_cast<std::size_t>(std::numeric_limits<la_int64_t>::max())) {
+                ok = false;
+            } else {
+                archive_entry_set_size(entry, static_cast<la_int64_t>(contents.size()));
+                ok = archive_write_header(writer, entry) == ARCHIVE_OK;
+            }
+            archive_entry_free(entry);
+        }
     }
-    f << "scene " << sanitizeValue(data.sceneTitle) << "\n";
-    f << "timestamp " << sanitizeValue(data.timestamp.empty() ? nowString() : data.timestamp) << "\n";
-    for (Flags::const_iterator it = data.flags.begin(); it != data.flags.end(); ++it) {
-        f << "flag " << sanitizeKey(it->first) << "=" << sanitizeValue(it->second) << "\n";
+    if (ok) {
+        std::size_t written = 0;
+        while (written < contents.size()) {
+            la_ssize_t n = archive_write_data(writer, contents.data() + written,
+                                               contents.size() - written);
+            if (n <= 0) {
+                ok = false;
+                break;
+            }
+            written += static_cast<std::size_t>(n);
+        }
+        if (ok) ok = archive_write_finish_entry(writer) == ARCHIVE_OK;
     }
-    f.close();
+    if (archive_write_close(writer) != ARCHIVE_OK) ok = false;
+    if (archive_write_free(writer) != ARCHIVE_OK) ok = false;
+    if (!ok || used > buffer.size()) return false;
 
-    // 记录最近存档槽，供「继续游戏」使用
-    std::ofstream lf((dir_ + "/last.txt").c_str(), std::ios::out | std::ios::trunc);
-    if (lf) lf << slot;
+    compressed.assign(buffer.data(), used);
     return true;
 }
 
-bool SaveManager::load(int slot, SaveData& out) const {
-    std::ifstream f(pathFor(slot).c_str(), std::ios::in | std::ios::binary);
-    if (!f) return false;
+bool extractTarGz(const std::string& compressed, std::string& contents) {
+    struct archive* reader = archive_read_new();
+    if (!reader) return false;
+    bool ok = archive_read_support_filter_gzip(reader) == ARCHIVE_OK &&
+              archive_read_support_format_tar(reader) == ARCHIVE_OK &&
+              archive_read_open_memory(reader, compressed.data(), compressed.size()) == ARCHIVE_OK;
+    struct archive_entry* entry = nullptr;
+    if (ok) {
+        const char* pathname = nullptr;
+        if (archive_read_next_header(reader, &entry) == ARCHIVE_OK) {
+            pathname = archive_entry_pathname(entry);
+        }
+        ok = pathname != nullptr &&
+             archive_entry_filetype(entry) == AE_IFREG &&
+             std::string(pathname) == "save";
+    }
+    if (ok) {
+        char buffer[8192];
+        for (;;) {
+            la_ssize_t n = archive_read_data(reader, buffer, sizeof(buffer));
+            if (n == 0) break;
+            if (n < 0) {
+                ok = false;
+                break;
+            }
+            contents.append(buffer, static_cast<std::size_t>(n));
+        }
+    }
+    if (ok) ok = archive_read_next_header(reader, &entry) == ARCHIVE_EOF;
+    if (archive_read_close(reader) != ARCHIVE_OK) ok = false;
+    if (archive_read_free(reader) != ARCHIVE_OK) ok = false;
+    return ok;
+}
 
+void parseSave(std::istream& f, SaveData& out) {
     out = SaveData();
     std::string line;
     bool first = true;
@@ -282,6 +340,64 @@ bool SaveManager::load(int slot, SaveData& out) const {
         }
         // 其它不认识的行直接丢掉——绝不能把它们当成「字段」再打印到界面上。
     }
+}
+
+}  // namespace
+
+bool SaveManager::save(int slot, const SaveData& data) {
+    if (!ensureDir()) return false;
+
+    std::ostringstream payload;
+    payload << "version " << SAVE_FORMAT_VERSION << "\n";
+    payload << "chapter " << sanitizeValue(data.chapter) << "\n";
+    payload << "pc " << data.pc << "\n";
+    // 读档锚点：label 名 + 偏移（旧版本没有这行，读不到就退回裸 pc）
+    if (!data.resumeLabel.empty()) {
+        payload << "resume " << sanitizeValue(data.resumeLabel) << " "
+                << data.resumeOffset << "\n";
+    }
+    payload << "scene " << sanitizeValue(data.sceneTitle) << "\n";
+    payload << "timestamp " << sanitizeValue(data.timestamp.empty() ? nowString() : data.timestamp) << "\n";
+    for (Flags::const_iterator it = data.flags.begin(); it != data.flags.end(); ++it) {
+        payload << "flag " << sanitizeKey(it->first) << "=" << sanitizeValue(it->second) << "\n";
+    }
+
+    std::string compressed;
+    if (!createTarGz(payload.str(), compressed)) return false;
+    if (compressed.size() >
+        static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) return false;
+
+    std::ofstream f(pathFor(slot).c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
+    if (!f) return false;
+    f.write(compressed.data(), static_cast<std::streamsize>(compressed.size()));
+    f.close();
+    if (!f) return false;
+
+    // 记录最近存档槽，供「继续游戏」使用
+    std::ofstream lf((dir_ + "/last.txt").c_str(), std::ios::out | std::ios::trunc);
+    if (lf) lf << slot;
+    return true;
+}
+
+bool SaveManager::load(int slot, SaveData& out) const {
+    std::ifstream f(pathFor(slot).c_str(), std::ios::in | std::ios::binary);
+    if (!f) return false;
+
+    std::string fileData((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
+    if (f.bad()) return false;
+
+    std::string contents;
+    if (fileData.size() >= 2 &&
+        static_cast<unsigned char>(fileData[0]) == 0x1F &&
+        static_cast<unsigned char>(fileData[1]) == 0x8B) {
+        if (!extractTarGz(fileData, contents)) return false;
+    } else {
+        // 兼容升级前的纯文本存档；下一次保存时会自动转换成 tar.gz。
+        contents.swap(fileData);
+    }
+
+    std::istringstream parsed(contents);
+    parseSave(parsed, out);
     return true;
 }
 

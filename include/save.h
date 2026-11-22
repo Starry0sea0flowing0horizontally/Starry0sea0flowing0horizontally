@@ -5,7 +5,7 @@
 
 #include <string>
 
-#include "script.h"  // Flags
+#include "script.h"
 
 namespace game {
 

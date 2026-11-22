@@ -1,9 +1,15 @@
 # ============================================================================
 #  花至荼蘼（同人视觉小说）—— CMake 构建配置
-#  纯标准 C++23，零第三方依赖，跨平台（Windows / Linux / macOS）
+#  C++23，跨平台（Windows / Linux / macOS）
 # ============================================================================
 cmake_minimum_required(VERSION 4.3)
-project(huazhitumi VERSION 1.0.0 LANGUAGES CXX)
+
+if(DEFINED ENV{VCPKG_ROOT} AND NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+  set(CMAKE_TOOLCHAIN_FILE "$ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      CACHE STRING "vcpkg toolchain file")
+endif()
+
+project(huazhitumi VERSION 1.0.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -23,16 +29,37 @@ add_executable(huazhitumi
   src/prologue.cpp
 )
 
-target_include_directories(huazhitumi PRIVATE src)
+target_include_directories(huazhitumi PRIVATE include)
 
 # 打字机演出使用 std::this_thread::sleep_for，需链接线程库（Linux/macOS 为 pthread）
 find_package(Threads REQUIRED)
-target_link_libraries(huazhitumi PRIVATE Threads::Threads)
+find_package(LibArchive REQUIRED)
+target_link_libraries(huazhitumi PRIVATE Threads::Threads LibArchive::LibArchive)
+
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(save_format_test tests/save_format_test.cpp src/save.cpp)
+  target_include_directories(save_format_test PRIVATE include)
+  target_link_libraries(save_format_test PRIVATE LibArchive::LibArchive)
+  if(MSVC)
+    target_compile_options(save_format_test PRIVATE /utf-8 /W3)
+    target_compile_definitions(save_format_test PRIVATE
+            _CRT_SECURE_NO_WARNINGS
+            NOMINMAX
+    )
+  else()
+    target_compile_options(save_format_test PRIVATE -Wall -Wextra -finput-charset=UTF-8 -fexec-charset=UTF-8)
+  endif()
+  add_test(NAME save_format COMMAND save_format_test)
+endif()
 
 if(MSVC)
   # /utf-8：源码与执行字符集均为 UTF-8（中文正确显示）
   target_compile_options(huazhitumi PRIVATE /utf-8 /W3)
-  target_compile_definitions(huazhitumi PRIVATE _CRT_SECURE_NO_WARNINGS)
+  target_compile_definitions(huazhitumi PRIVATE
+          _CRT_SECURE_NO_WARNINGS
+          NOMINMAX
+  )
 else()
   target_compile_options(huazhitumi PRIVATE -Wall -Wextra)
   # 确保中文源码以 UTF-8 读取、字符串以 UTF-8 编码

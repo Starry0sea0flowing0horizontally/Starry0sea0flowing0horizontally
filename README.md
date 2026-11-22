@@ -9,7 +9,7 @@
 >
 > 白麒麟 **四不相** 与灰麒麟 **四不遇**——两个「死不相遇」的灵魂，跨越一万年的执念与守望。
 
-本项目是一个**纯标准 C++（C++23）文字冒险游戏引擎 + 完整可玩的序章「咫尺天涯」**，零第三方依赖，跨平台（Windows / Linux / macOS）。
+本项目是一个**C++23 文字冒险游戏引擎 + 完整可玩的序章「咫尺天涯」**，使用 vcpkg 管理 `libarchive` 依赖，跨平台（Windows / Linux / macOS）。
 
 ---
 
@@ -56,6 +56,7 @@ huazhitumi/
 在仓库根目录打开 PowerShell：
 
 ```powershell
+$env:VCPKG_ROOT = "C:\path\to\vcpkg"
 pwsh .\build.ps1
 ```
 
@@ -65,11 +66,12 @@ pwsh .\build.ps1
 .\build\huazhitumi.exe
 ```
 
-首次使用前，请确认已安装 CMake、Ninja 和支持 C++23 的编译器，并将它们加入 `PATH`。
+首次使用前，请安装 CMake、Ninja、支持 C++23 的编译器和 vcpkg，并设置 `VCPKG_ROOT` 指向 vcpkg 根目录。CMake 会通过 vcpkg manifest 自动安装 `libarchive`。
 
 ### 方式 C：手动使用 CMake
 
 ```bash
+export VCPKG_ROOT=/path/to/vcpkg
 cmake -S . -B build -G Ninja
 cmake --build build
 ```
@@ -174,7 +176,7 @@ Windows 会生成 `huazhitumi-1.0.1-win64-msvc.zip`，Linux 会生成 `huazhitum
 开场画面（序章 · 咫尺天涯）有一张配图，但终端里没法贴 PNG，所以做成了**字符画**：把画直接换算成「上半块 ▀ + 24bit 真彩色」的字符格，一个字符格子表示上下两个像素（前景色画上半、背景色画下半）。
 
 - `assets/images/prologue_cover.png`：开场原图（两只对视的麒麟），这是唯一的一张源图。
-- `src/cover_art.h`：由 `tools/cover_art.py` 生成的字符画数据，提供两个尺寸：
+- `include/cover_art.h`：由 `tools/cover_art.py` 生成的字符画数据，提供两个尺寸：
   - **92 列 × 34 行**（实际表现 92×68 像素）—— 窗口 ≥ 92 列、≥ 37 行时使用；
   - **76 列 × 24 行** —— 窗口装不下大图时自动降级，保证不折行、不滚动。
 - `assets/images/prologue_cover_preview.png`：字符画的实际观感预览（按字符格的 1:2 比例放大）。

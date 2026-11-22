@@ -23,6 +23,7 @@
 *.zip
 
 # Runtime save data
+/saves/
 /saves/*.sav
 /saves/last.txt
 

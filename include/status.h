@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "script.h"   // Flags
+#include "script.h"
 
 namespace game {
 
