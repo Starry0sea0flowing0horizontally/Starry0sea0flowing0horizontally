@@ -9,12 +9,14 @@
 
 #include <chrono>
 #include <cstdio>
+#include <iostream>
 #include <deque>
 #include <string>
 #include <thread>
 #include <utility>
 #include <vector>
 
+#include "bigtext.h"
 #include "config.h"
 #include "input.h"
 #include "prologue.h"
@@ -311,7 +313,7 @@ void Game::initProfile(Flags& flags, bool fresh) {
 
     // 开场就带在身上的重要物品（全部按「未装备的候选」登记进背包和装备槽）
     if (fresh) {
-        std::vector<std::string> items = defaultWarehouse();
+        std::vector<std::string> items = inventory::freshDefaults(flags);
         for (std::size_t i = 0; i < items.size(); ++i) {
             inventory::add(flags, items[i]);
         }
@@ -493,10 +495,26 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
     // 文书阁：有地图角色时说明「上司正走过来」，桌后先不摆那一格，
     // 否则会同时画出两个上司（桌后一个、走过来的一个）。
     else if (n.mapId == "office") map_.loadOffice(n.mapActors.empty());
+    // 文书阁 · 入夜以后：上司走了，同事也走了（桌后、案边都不再摆格子）。
+    else if (n.mapId == "office_dusk") map_.loadOffice(false, false);
+    // 值守室（夜里）：四不相自己走回去，接上夜晚那场戏。
+    else if (n.mapId == "dutyroom") map_.loadDutyRoom();
     else if (n.mapId == "dorm") map_.loadDorm();
-    else if (n.mapId.size() > 8 && n.mapId.compare(0, 8, "corridor") == 0)
-        map_.loadCorridor(n.mapId[8] - '0');     // corridor1..4
+    // 浮梦：dream1..dream4 = 遇龙雪山 / 同游川 / 梦栖林 / 农家小院
+    else if (n.mapId.size() == 6 && n.mapId.compare(0, 5, "dream") == 0)
+        map_.loadDream(n.mapId[5] - '0');
+    else if (n.mapId.size() > 8 && n.mapId.compare(0, 8, "corridor") == 0) {
+        // corridor1..4 是白天；后头带一个 'n'（corridor4n）是入夜以后的那一段。
+        const bool nightSeg = (n.mapId.size() > 9 && n.mapId[9] == 'n');
+        map_.loadCorridor(n.mapId[8] - '0', nightSeg);
+    }
     else map_.loadDefaultTianting();
+    // 剧本给了标题就用剧本的（同一张值守室要演「五 · 夜晚」和「六 · 深夜」两场）
+    map_.setTitle(n.text);
+    // 存档里记的「当前场景」永远以脚下这张图为准：
+    // 在地图里存档（记事碑 / 菜单存档）时，显示的是「四 · 文书阁」这种图名，
+    // 不再是上一段过场（「二 · 清晨，宿舍」）留下的旧标题。
+    currentScene_ = map_.title();
     // mapStartX/mapStartY 为负数时，沿用玩家上一次站的位置（互动后留在原地）
     if (n.mapStartX >= 0 && n.mapStartY >= 0)
         map_.setPlayer(n.mapStartX, n.mapStartY);
@@ -751,6 +769,8 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
     };
     // 在字幕条里挂一句话（打字机逐字吐，只有空格/回车能翻页）。
     // 清晨开场、回廊里「不能闲逛了」的催促都走这一条路，参数一致。
+    int tileStamp = 0;   // 改过几格地形：画面指纹要跟着变，否则小动画不重画
+
     auto setSub = [&](bool dlg, const std::string& spk, const std::string& text,
                       const char* col) {
         subtitle.isDialogue = dlg;
@@ -852,6 +872,14 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             if (s.kind == "wait") {
                 st.nextAt = actorTiming + (s.ms > 0 ? s.ms : 1);
                 st.step++;
+                return true;
+            }
+            if (s.kind == "tile") {
+                // 当场改一格地形（挑灯、添字、抄完）：演出里的「小动画」就靠它
+                map_.setCell(s.x, s.y, s.text);
+                ++tileStamp;
+                st.step++;
+                st.nextAt = actorTiming + (s.ms > 0 ? s.ms : 220);
                 return true;
             }
             if (s.kind == "disappear") {
@@ -964,6 +992,7 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                        (actors[i].hidden ? "h" : "") + (actors[i].done ? "d" : "");
             }
             sig += "|" + std::to_string(map_.playerX()) + "," + std::to_string(map_.playerY());
+            sig += "|" + std::to_string(tileStamp);
             if (sig != lastDrawnSig) {
             lastDrawnSig = sig;
             renderer_.clear();
@@ -1209,6 +1238,8 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             auto actWord = [](const std::string& loc) -> std::string {
                 if (loc == "窗") return "查看";
                 if (loc == "记事碑") return "存档";
+                if (loc == "床") return "躺下";
+                if (loc == "座位") return "坐下";
                 if (loc == "上司" || loc == "同事") return "说话";
                 if (loc == "花坛" || loc == "铜鼎") return "查看";
                 return "打开";
@@ -1442,7 +1473,50 @@ void Game::renderChapterEnd(const Node& n) {
     renderer_.newline();
     renderer_.printCentered("—— " + n.sceneTitle + " ——", color::CYAN);
     renderer_.newline();
-    renderer_.typeLine("　　" + n.text, color::SILVER);
+
+    // 结语正文：按行居中排，空行照旧留白。
+    // 「感谢游玩」那一行用暗金，和上下拉开层次。
+    {
+        std::size_t i = 0;
+        while (i <= n.text.size()) {
+            const std::size_t j = n.text.find('\n', i);
+            const std::string line =
+                n.text.substr(i, (j == std::string::npos ? n.text.size() : j) - i);
+            if (line.empty()) {
+                renderer_.newline();
+            } else if (line.find("感谢游玩") != std::string::npos) {
+                renderer_.printCentered(line, color::GOLD);
+            } else {
+                renderer_.printCentered(line, color::SILVER);
+            }
+            if (j == std::string::npos) break;
+            i = j + 1;
+        }
+    }
+
+    // 制作署名
+    renderer_.newline();
+    renderer_.printCentered("made by 麒麟四不遇", color::AMBER);
+    renderer_.newline();
+    renderer_.printCentered("〔回车〕继续", color::DIM);
+    input::readKey();   // 致谢看完，翻到最后一屏
+
+    // 最后那一句红字单独一屏：不抖了，直接大字号——
+    // 「我在看着你」用 ▀▄█ 半块字符拼成图（src/bigtext.h，由 tools/bigtext.py 生成），
+    // 一个字 14 像素宽，整句 70 列，在 80 列终端里正好居中、独占一屏。
+    renderer_.clear();
+    bodyLines_ = 0;
+    for (int i = 0; i < 6; ++i) renderer_.newline();
+    const std::size_t artRows = sizeof(bigtext::WATCHING) / sizeof(bigtext::WATCHING[0]);
+    for (std::size_t k = 0; k < artRows; ++k) {
+        if (bigtext::WATCHING[k][0] == '\0') {
+            renderer_.newline();
+        } else {
+            renderer_.printCentered(bigtext::WATCHING[k], color::RED);
+        }
+    }
+    renderer_.printCentered("······", color::RED);
+    renderer_.newline();
     renderer_.newline();
     renderer_.printCentered("〔回车〕返回标题", color::DIM);
 }
@@ -2197,11 +2271,18 @@ int Game::loadMenu() {
 }
 
 // 存档槽选择窗。
-// 只画「标题 + 框 + 6 行 + 提示」，之后不再追加任何内容——旧版在下面又打了
+// 只画「标题 + 框 + 十行两列 + 提示」，之后不再追加任何内容——旧版在下面又打了
 // 一段信息，读档界面下方就会出现不该出现的东西。
 // 槽位里显示的摘要只来自 SaveManager::brief()，它在读存档时已经清洗过
 // 控制字符 / BOM / CRLF / 换行 / 超长内容，这里再做一次宽度裁剪兜底。
+//
+// 20 个存档槽排成**两列 × 十行**：左边 1—10，右边 11—20，一屏放得下，不用翻页。
+// 每格宽度 = 标记(2) + 「存档」(4) + 序号(2) + 空格(1) + 摘要(21) = 30 列。
+// 整行 = 空格(1) + 30 + 「 │ 」(3) + 30 = 64 列，正好是 66 列方框的内宽。
 int Game::slotPicker(const std::string& title) {
+    const int ROWS  = 10;    // 每列十行
+    const int CELLW = 21;    // 摘要最多 21 显示列
+    const int w     = 66;    // 方框总宽（内宽 64）
     std::size_t sel = 0;
     while (true) {
         renderer_.clear();
@@ -2209,30 +2290,48 @@ int Game::slotPicker(const std::string& title) {
         renderer_.printCentered("—— " + title + " ——", color::GOLD);
         renderer_.newline();
 
-        const int w = 68;
         renderer_.printLine(boxTop(w, ""));
-        for (int i = 0; i < SAVE_SLOTS; ++i) {
-            std::string sum = saves_.brief(i);
-            sum = Renderer::clip(sum, 40);          // 兜底：一行最多 40 显示列
-            bool on = (static_cast<std::size_t>(i) == sel);
-            std::string line = " " + std::string(on ? "》" : "　") +
-                               "存档" + std::to_string(i + 1) + "　";
-            if (sum.empty()) line += "（空）";
-            else line += sum;
+        for (int r = 0; r < ROWS; ++r) {
+            std::string line = " ";
+            bool rowFilled = false;
+            for (int col = 0; col < 2; ++col) {
+                if (col == 1) line += " \xE2\x94\x82 ";   // │
+                int i = r + col * ROWS;                  // 左列 0—9，右列 10—19
+                if (i >= SAVE_SLOTS) {
+                    line += std::string(static_cast<std::size_t>(CELLW + 9), ' ');
+                    continue;
+                }
+                std::string sum = Renderer::clip(saves_.brief(i), CELLW);
+                if (!sum.empty()) rowFilled = true;
+                line += std::string(i == static_cast<int>(sel) ? "》" : "　") +
+                        "存档" + padLeft(std::to_string(i + 1), 2) + " ";
+                // 摘要必须补到固定宽度：否则空槽那几行左列会短一截，
+                // 右列跟左边对不齐，一整屏就歪了。
+                line += padRight(sum.empty() ? std::string("（空）") : sum, CELLW);
+            }
+            // boxMid 只吃一种颜色：选中的那一行整行提亮成青色，
+            // 有存档的行银色，全空的行压灰——二十格里哪一行都不能刺眼。
+            bool on = (r == static_cast<int>(sel) % ROWS);
             renderer_.printLine(boxMid(line, w,
-                                       on ? color::CYAN : (sum.empty() ? color::GRAY
-                                                                       : color::SILVER)));
+                                       on ? color::CYAN
+                                          : (rowFilled ? color::SILVER : color::GRAY)));
         }
         renderer_.printLine(boxBottom(w));
 
         renderer_.newline();
-        renderer_.printLine("　　【方向键】选择　【回车】确认　【Esc】取消", color::DIM);
+        renderer_.printLine("　【↑↓←→】选择　【回车】确认　【1-9】直达前九档　【Esc】取消",
+                            color::DIM);
 
         int k = input::readKey();
+        const std::size_t step = static_cast<std::size_t>(ROWS);
         if (k == input::KEY_UP) {
-            if (sel > 0) sel--;
+            if (sel >= 1) sel--;
         } else if (k == input::KEY_DOWN) {
             if (sel + 1 < static_cast<std::size_t>(SAVE_SLOTS)) sel++;
+        } else if (k == input::KEY_LEFT) {
+            if (sel >= step) sel -= step;              // 跳到左列同一行
+        } else if (k == input::KEY_RIGHT) {
+            if (sel + step < static_cast<std::size_t>(SAVE_SLOTS)) sel += step;   // 跳到右列
         } else if (k == input::KEY_ENTER || k == input::KEY_SPACE) {
             renderer_.clear();   // 关窗即清屏，绝不让这一屏残留到下一屏
             return static_cast<int>(sel);
@@ -2240,11 +2339,11 @@ int Game::slotPicker(const std::string& title) {
             renderer_.clear();
             return -1;
         } else if (k >= '1' && k <= '9') {
-            int idx = k - '1';
-            if (idx < SAVE_SLOTS) {
-                renderer_.clear();
-                return idx;
-            }
+            renderer_.clear();
+            return k - '1';                            // 1—9 → 存档 1—9
+        } else if (k == '0') {
+            renderer_.clear();
+            return 9;                                  // 0 → 存档 10
         }
     }
 }

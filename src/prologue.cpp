@@ -183,7 +183,6 @@ Script buildPrologue() {
     b.narr("他用爪尖把它挑了出来——小小一团，软得几乎没分量，灰扑扑的，边缘还沾着细灰。");
     b.narr("不知为什么，他把那团毛收进了袖口，没有扔。");
     b.setFlag("dust", "已得");
-    b.setFlag("item_fluff_gray", "一团灰色的绒毛");
     b.item("一团灰色的绒毛", "一团软得几乎没有分量的灰色绒毛。");
     b.jump("dorm_back");
 
@@ -309,6 +308,7 @@ Script buildPrologue() {
     b.branch("storeroom_key", "已得", "storeroom_box_got");
     b.narr("一只巴掌大的黄铜匣子，匣面上没有锁孔，只有三个凹进去的字位。匣侧刻着一行小字：");
     b.narr("「花至＿＿，春事了。」");
+    b.branch("storeroom_cha", "1", "storeroom_box_half");
     b.say("四不相", "花至……什么？", speaker::SIBUXIANG);
     b.choice("要按下哪个字？", {
         {"荼", "storeroom_box_cha"},
@@ -316,21 +316,38 @@ Script buildPrologue() {
         {"蘼", "storeroom_box_li"},
     });
 
-    // 按错：字位卡住，弹不动。
+    // 第一格：先按「荼」。这个字是按得下去的，按下去就不弹回来了。
     b.label("storeroom_box_cha");
-    b.narr("他把「荼」按了下去。「嗒」一声，字位陷进去半分，又慢慢弹了回来。");
-    b.say("四不相", "不对……只有一个是按得下去的。", speaker::SIBUXIANG);
+    b.branch("storeroom_cha", "1", "storeroom_box_half");
+    b.narr("他把「荼」按了下去。「嗒」一声，字位陷进去半分——这一回没有弹回来，卡住了。");
+    b.say("四不相", "……按得下去。还差一个字。", speaker::SIBUXIANG);
+    b.setFlag("storeroom_cha", "1");
     b.jump("storeroom_box");
+
+    // 「荼」已经按下了：剩下那两个字里再选一个。
+    b.label("storeroom_box_half");
+    b.narr("「荼」那一格已经陷下去，卡住了。匣侧那行小字还空着最后半格。");
+    b.choice("再按哪一个？", {
+        {"靡", "storeroom_box_mi"},
+        {"蘼", "storeroom_box_li"},
+    });
 
     b.label("storeroom_box_mi");
     b.narr("他把「靡」按了下去。匣子里响了一声，像什么被拧歪了，字位纹丝不动地卡在那儿。");
     b.say("四不相", "也不是这个。那个「靡」，是靡靡之音的靡……", speaker::SIBUXIANG);
     b.jump("storeroom_box");
 
-    // 按对：花至荼蘼。开匣，得到铜钥匙。
+    // 「蘼」：得先按下「荼」，两个都按下才开匣。
     b.label("storeroom_box_li");
+    b.branch("storeroom_cha", "1", "storeroom_box_li_ok");
+    b.narr("他把「蘼」按了下去。字位只陷下去一点，又慢慢弹了回来，匣子一动不动。");
+    b.say("四不相", "……不对。是还差一格。", speaker::SIBUXIANG);
+    b.jump("storeroom_box");
+
+    // 两格都对：花至荼蘼。开匣，得到铜钥匙。
+    b.label("storeroom_box_li_ok");
     b.narr("他把「蘼」按了下去。");
-    b.narr("「嗒。」字位到底了。匣子里传来一连串很轻的机括声，一层一层往里退。匣盖弹开。");
+    b.narr("「嗒。」两格字位一起到底。匣子里传来一连串很轻的机括声，一层一层往里退。匣盖弹开。");
     b.narr("里面铺着一层发黄的丝绒，丝绒上躺着一把小小的铜钥匙。");
     b.say("四不相", "荼蘼……「花至荼蘼」，是春天要尽了的意思。", speaker::SIBUXIANG);
     b.setFlag("storeroom_lock", "解开");
@@ -390,7 +407,7 @@ Script buildPrologue() {
         sy.steps.push_back(ScriptBuilder::actNarr("门被轻轻拉开一条缝。没有声音。"));
         sy.steps.push_back(ScriptBuilder::actNarr("那扇门轴坏了很久了，开的时候总会吱呀一声。可它今天没有响。"));
         sy.steps.push_back(ScriptBuilder::actNarr("像一只爪子用了一万年的熟练度，让门轴连一声呻吟都没敢发出来。"));
-        sy.steps.push_back(ScriptBuilder::actNarr("一只灰白色的幼崽从缝里挤进来——琥珀色的眼睛在黑暗中亮了一瞬，又暗下去，像怕自己的光吵醒了床上的白麒麟。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("一只灰白色的幼崽从缝里挤进来——琥珀色的眼睛在黑暗中亮了一瞬，又暗下去，像怕自己的光吵醒了床上的白麒麟。他额上那对小角好好地立着，尾巴也是完完整整的一条。"));
         sy.steps.push_back(ScriptBuilder::actMove(20, 12));
         sy.steps.push_back(ScriptBuilder::actSay("四不遇", "哥……", speaker::SIBUYU));
         // 走到床前站住（(5,4) = 枕头右边一格），从这里开始不再走开。
@@ -403,7 +420,7 @@ Script buildPrologue() {
             speaker::SIBUYU));
         sy.steps.push_back(ScriptBuilder::actNarr("他就蹲在床边，爪尖搭在床沿上，没有碰四不相。琥珀色的眼睛看着他，看得很深，像在看一个被锁在很深很深地方的人。"));
         sy.steps.push_back(ScriptBuilder::actNarr("他伸手够不到，他喊他听不见。他站在外面等了一万年，里面的门一直没有开。"));
-        sy.steps.push_back(ScriptBuilder::actNarr("风从窗缝里灌进来，吹动他缺了一点的尾巴尖。他缩了一下，把自己蜷得更小了一点，像一朵不敢开大的花。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("风从窗缝里灌进来，吹动他尾巴尖上那撮软毛。他缩了一下，把自己蜷得更小了一点，像一朵不敢开大的花。"));
         sy.steps.push_back(ScriptBuilder::actNarr("他擦了擦眼泪，离开了。"));
         sy.steps.push_back(ScriptBuilder::actMove(20, 12));
         sy.steps.push_back(ScriptBuilder::actMove(20, 15, 180));
@@ -430,10 +447,9 @@ Script buildPrologue() {
     b.label("dorm_wake");
     b.cls();
     b.scene("二 · 清晨，宿舍", "scene_room_morning");
-    // 这两段不进地图，只留在屏上做开场；进地图后它们会被搬到地图下面的字幕栏里，
-    // 所以返回地图时也会重新显示——玩家一睁眼就知道「要迟到了」。
-    b.narr("闹钟不合时宜地响起。四不相猛地坐起，浑身一颤。");
-    b.narr("窗外天已经大亮了。晨光从破纸洞里灌进来，在他纯白色的绒毛上铺了一层惨淡的薄亮。");
+    // 「闹钟响起」和「窗外天已经大亮了」这两句不再在进地图前念一遍——
+    // 进 dorm_morning 以后它们会自动挂到地图下方的字幕栏里（见 game.cpp 的
+    // morning_intro）。这里只留四不相那一句，免得同一段说明出现两遍。
     b.say("四不相", "要迟到了，得赶快过去", speaker::SIBUXIANG);
     b.setFlag("time", "清晨");   // 天亮了：这时候再去看床，不会再睡回去
 
@@ -713,25 +729,32 @@ Script buildPrologue() {
             "那双眼睛也在看他，看得很深，像在辨认一个被遗忘了很久的名字。"));
         yu.steps.push_back(ScriptBuilder::actSay("四不相",
             "谢、谢谢典狱长大人……我……我先走了……", speaker::SIBUXIANG));
+        yu.steps.push_back(ScriptBuilder::actNarr(
+            "四不相抱着公文往南边跑。跑过光与暗的分界，跑过一根一根廊柱。他没有回头。"));
+        yu.steps.push_back(ScriptBuilder::actNarr(
+            "他觉得自己应该回头。可他没有。他不知道自己错过了什么。"));
         yu.steps.push_back(ScriptBuilder::actMove(38, 3, 150));
         yu.steps.push_back(ScriptBuilder::actDisappear());
+        yu.steps.push_back(ScriptBuilder::actNarr(
+            "身后的回廊里，那个身影蹲了下来。地上有一根白色的绒毛，是四不相刚才蹭掉的，还带着一点晨光的温度。"));
+        yu.steps.push_back(ScriptBuilder::actNarr(
+            "他捡起来，贴在脸颊上，轻轻蹭了一下，像碰一个隔了一万年的温度。然后他闭上了眼睛。"));
+        yu.steps.push_back(ScriptBuilder::actNarr(
+            "再睁眼时，一滴清泪从眼眶里滑出来，砸在地砖上，绽成一朵极小的荼蘼花。"));
+        yu.steps.push_back(ScriptBuilder::actSay("典狱长", "……你跑什么。我又不会罚你。",
+                                                speaker::SIBUYU));
+        yu.steps.push_back(ScriptBuilder::actNarr(
+            "他把那朵花和那根绒毛一起收进袖口，爪尖攥得那么紧，仿佛一松开，那根绒毛也会像四不相一样，从他爪心里跑掉。"));
+        yu.steps.push_back(ScriptBuilder::actSay("典狱长", "……杂物司……不能让你去。",
+                                                speaker::SIBUYU));
         yu.steps.push_back(ScriptBuilder::actFinish());
 
         std::vector<MapActor> actors;
         actors.push_back(yu);
         b.mapWithActors("corridor2", 2, 3, c2, actors);
     }
-    // 演完了：清屏，接着往下走（操控权在这里交回给玩家，见 office / corridor2_after）
-    b.cls();
+    // 演完了：操控权在这里交回给玩家（见 corridor2_after）
     b.setFlag("met_sibuyu", "1");
-    b.narr("四不相抱着公文往南边跑。跑过光与暗的分界，跑过一根一根廊柱。他没有回头。");
-    b.narr("他觉得自己应该回头。可他没有。他不知道自己错过了什么。");
-    b.narr("身后的回廊里，那个身影蹲了下来。地上有一根白色的绒毛，是四不相刚才蹭掉的，还带着一点晨光的温度。");
-    b.narr("他捡起来，贴在脸颊上，轻轻蹭了一下，像碰一个隔了一万年的温度。然后他闭上了眼睛。");
-    b.narr("再睁眼时，一滴清泪从眼眶里滑出来，砸在地砖上，绽成一朵极小的荼蘼花。");
-    b.say("典狱长", "……你跑什么。我又不会罚你。", speaker::SIBUYU);
-    b.narr("他把那朵花和那根绒毛一起收进袖口，爪尖攥得那么紧，仿佛一松开，那根绒毛也会像四不相一样，从他爪心里跑掉。");
-    b.say("典狱长", "……杂物司……不能让你去。", speaker::SIBUYU);
     b.jump("corridor2_after");
 
     b.label("corridor2_plain");
@@ -822,8 +845,9 @@ Script buildPrologue() {
     b.jump("corridor4_back");
 
     b.label("mansion_kunshou");
-    b.narr("困兽府的门是黑的，比回廊里别的门都黑，黑得连门环都看不见。");
-    b.narr("门前没有灯，也没有人。门上没有封条，也没有名字——只刻着一个字：「封」。");
+    b.narr("一座紧闭着的府邸矗立着，匾额上，“困兽府”几个苍劲有力的字跃然其上，雕花的窗棂黯淡。");
+    b.narr("门不是黑的，只是比较暗，暗得连门环都看不太清。");
+    b.narr("门前挂着灯，暖黄的一小团，风一吹就轻轻地晃——像是……等着什么人回来，好一起进去。");
     b.say("四不相", "……典狱长就住在这里面？", speaker::SIBUXIANG);
     b.narr("他的脚步在门前慢了半拍。他不知道自己为什么慢。");
     b.jump("corridor4_back");
@@ -838,12 +862,12 @@ Script buildPrologue() {
     std::vector<MapExit> officeExits = {
         {"上司", "office_boss_again"},
         {"同事", "office_colleague"},
-        {"桌子", "office_desk"},
+        {"座位", "office_desk"},
         {"笔墨", "office_ink"},
         {"案卷", "office_scroll"},
         {"油灯", "office_lamp"},
-        {"木柜", "office_cabinet"},
         {"窗", "office_window"},
+        {"记事碑", "office_save"},
         {"门", "office_leave"},
     };
     b.label("office");
@@ -950,7 +974,7 @@ Script buildPrologue() {
     b.narr("他看了一整段沉默，像看一颗流星划过夜空。他不知道，那是最后一眼。");
     b.say("灰白色幼崽", "……见过。你梦过我。你捏过我。你等过我。我……也等过你。", speaker::SIBUYU);
     b.narr("他把绒毛贴在胸口，闭上了眼睛。再睁开时，琥珀色的光在眼底闪了一下，又暗下去了。");
-    b.narr("他站起来，转身走回困兽府的方向。缺了一点的尾巴尖在风里晃了晃，像一根快要燃尽的香，还在撑着最后一寸不肯灭。");
+    b.narr("他站起来，转身走回困兽府的方向。尾巴在风里垂着，完整、安静，像一根快要燃尽的香，还在撑着最后一寸不肯灭。");
 
     // ---- 回到文书阁：正戏演完，操控权交回来，可以走一圈再出门 ----
     b.jump("office_free");
@@ -964,9 +988,112 @@ Script buildPrologue() {
     b.label("office_reenter");    // 从回廊再进来（开场那一趟已经演过了）
     b.map("office", 4, 13, officeExits);
 
-    b.label("office_leave");      // 推门出去：天已经黑了，回值守室
-    b.narr("他推开门。回廊里的灯一盏一盏亮起来，天已经黑了。");
-    b.jump("duty_night");
+    b.label("office_leave");      // 想走：文卷还没抄完，他自己又回了桌前
+    b.narr("他摸到门边，爪尖搭在门上，回头看了一眼自己那张桌子——昨天没抄完的文卷还摊在那儿，笔也没洗。");
+    b.narr("「明天早会前交齐。」他不敢就这么走出去。");
+    b.jump("office_seat");
+
+    // ---- 坐下抄到天黑（全程挂在地图下方）----
+    // walkBack=true ：从门口被「明天早会前交齐」逼回来，他自己一路走回案边
+    //                 （这一段玩家本来就不能操作，走位由剧本给）；
+    // walkBack=false：玩家自己已经走到案边、按了回车，就地坐下，绝不再演一遍
+    //                 「四不相自己走到属于他的桌旁」。
+    auto eveningMontage = [&](bool walkBack) {
+        MapActor nar;
+        nar.id = "narrator";
+        nar.name = "旁白";
+        nar.x = 29;
+        nar.y = 4;
+        nar.unseen = true;
+        if (walkBack) nar.steps.push_back(ScriptBuilder::actPMove(29, 4, 90));   // 只有这一种情形才让他自己走
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他把凳子摆正，坐下来，文卷铺开，砚台挪到手边，笔尖在砚池里转了两圈，落纸。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "一整个下午，文书阁里只有笔尖擦过纸面的声音。抄错一个字，整页重来；抄到眼花，就抬头看一眼窗。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "窗上的光从这一格挪到那一格，又一点一点淡下去。他抄完一卷，摞好，再抽下一卷。"));
+        nar.steps.push_back(ScriptBuilder::actFinish());
+
+        // 上司还坐在最里头那张桌后（这一段不画「司」那一格，由角色顶上）。
+        MapActor boss;
+        boss.id = "shangsi";
+        boss.name = "上司";
+        boss.glyph = "司";
+        boss.color = speaker::SHANGSI;
+        boss.x = 34;
+        boss.y = 2;
+        boss.steps.push_back(ScriptBuilder::actWait(1));   // 一直在桌后坐着（这一步什么都不做，只是把他摆在桌上）
+
+        std::vector<MapActor> actors;
+        actors.push_back(nar);
+        actors.push_back(boss);
+        b.mapWithActors("office", walkBack ? 4 : -1, walkBack ? 13 : -1, officeExits, actors);
+    };
+
+    b.label("office_sit");        // 人已经站在案边了：直接坐下
+    eveningMontage(false);
+    b.jump("office_dusk");
+
+    b.label("office_seat");       // 想偷偷走掉，被逼回来：先走回案边
+    eveningMontage(true);
+    b.jump("office_dusk");
+
+    // ---- 入夜：同僚一个个走了，上司也走了，他吹灯出门 ----
+    b.label("office_dusk");
+    {
+        MapActor boss;
+        boss.id = "shangsi";
+        boss.name = "上司";
+        boss.glyph = "司";
+        boss.color = speaker::SHANGSI;
+        boss.x = 34;
+        boss.y = 2;
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "天色暗下来了。案上的字开始看不清，有人咳了一声，屋里的人便一个接一个收了笔。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "「收了吧。」最里头那张桌后的人合上竹简，站起来。僚属们依次起身，把竹简摞好，向最里头行了个礼，出去了。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "一屋子的沙沙声忽然没了，空得能听见窗外风过廊檐。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "上司走到他桌边，停了一下。四不相把头埋得更低。"));
+        boss.steps.push_back(ScriptBuilder::actSay("上司",
+            "灯留一盏。别把墨洒在文卷上。", speaker::SHANGSI));
+        boss.steps.push_back(ScriptBuilder::actSay("四不相", "……是。", speaker::SIBUXIANG));
+        boss.steps.push_back(ScriptBuilder::actMove(4, 13, 95));   // 上司从桌边走到门口
+        boss.steps.push_back(ScriptBuilder::actDisappear());
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "门在他身后合上。文书阁里只剩下四不相一个人，和一盏灯。"));
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "他把抄好的文卷摞齐，压上砚台，站起来，吹熄了灯。"));
+        boss.steps.push_back(ScriptBuilder::actPMove(3, 13, 90));   // 四不相自己走到门边
+        boss.steps.push_back(ScriptBuilder::actNarr(
+            "回廊里的灯一盏一盏亮起来，天已经黑了。他拉上门，沿着廊下慢慢往回走。"));
+        boss.steps.push_back(ScriptBuilder::actFinish());
+
+        std::vector<MapActor> actors;
+        // 一屋子的同事：说走就走。桌边那八个「僚」在入夜这张图上本来就不画了
+        // （见 Map::loadOffice 的 clerksPresent），改由角色顶上——
+        // 一个一个收起笔、起身、走出画外，走完桌边一个人都不剩。
+        static const int clerkX[8] = {5, 11, 17, 23, 5, 11, 17, 23};
+        static const int clerkY[8] = {2, 2, 2, 2, 7, 7, 7, 7};
+        for (int i = 0; i < 8; ++i) {
+            MapActor c;
+            c.id = "colleague" + std::to_string(i);
+            c.name = "同事";
+            c.glyph = "僚";
+            c.color = color::WHITE;                 // 同事：一身白
+            c.x = clerkX[i];
+            c.y = clerkY[i];
+            c.steps.push_back(ScriptBuilder::actWait(400 + i * 260));   // 一个接一个起身
+            c.steps.push_back(ScriptBuilder::actDisappear());           // 收拾好，出去了
+            actors.push_back(c);
+        }
+        actors.push_back(boss);
+        b.mapWithActors("office_dusk", 29, 4, officeExits, actors);
+    }
+
+    // ---- 出门：回廊里天已经黑了，走回值守室那扇门再进去 ----
+    b.jump("duty_corridor");
 
     b.label("office_boss_again");
     b.narr("上司头也没抬，笔尖在纸上顿了一下。");
@@ -984,11 +1111,10 @@ Script buildPrologue() {
     b.narr("四不相的心往下一沉。");
     b.jump("office_plain");
 
-    b.label("office_desk");
-    b.narr("他这张桌子靠着窗，木纹里嵌着一层洗不掉的旧墨。");
-    b.narr("昨天没抄完的文卷还摊在桌上，纸边被他自己的爪印蹭得发黑。");
-    b.narr("笔架上的笔没洗，墨干在笔尖上，硬得像一根小骨头。");
-    b.jump("office_plain");
+    b.label("office_desk");       // 他自己的座位（金色案子「案」+「席」）
+    b.narr("这张金色的是他自己的案子。一屋子几十张桌，只有这一张描了金——他坐下，别人就知道这儿有人。");
+    b.narr("昨天没抄完的文卷还摊在案上，纸边被他自己的爪印蹭得发黑；笔也没洗，墨干在笔尖上，硬得像一根小骨头。");
+    b.jump("office_sit");
 
     b.label("office_ink");
     b.narr("砚池里的墨是新磨的，凉。磨墨的人很用力，池边溅出来几点。");
@@ -1004,8 +1130,8 @@ Script buildPrologue() {
     b.narr("灯还亮着，灯芯剪过，火苗很稳。这一屋子的白天，都要靠它撑到天黑。");
     b.jump("office_plain");
 
-    b.label("office_cabinet");
-    b.narr("木柜里是一格一格的档卷，标签上写着年份。最早的那一格，灰厚得能写字。");
+    b.label("office_save");       // 记事碑：文书阁的存档点
+    b.savePrompt();
     b.jump("office_plain");
 
     b.label("office_window");
@@ -1013,17 +1139,180 @@ Script buildPrologue() {
     b.narr("窗纸有一处破了，风从那儿渗进来，吹得案上的纸角一动一动。");
     b.jump("office_plain");
 
+    // =====================================================================
+    //  回廊 · 入夜（困兽府前那一段的夜版）
+    //  从文书阁出来天已经黑了。这一段回廊的北墙上多开一扇「值守室」的门，
+    //  走上去按回车才进得去——值守室是自己一间屋，不从文书阁里穿过去。
+    // =====================================================================
+    std::vector<MapExit> c4n = {
+        {"值守室", "duty_door_in"},
+        {"文书阁", "duty_office_locked"},
+        {"记事碑", "duty_corridor_save"},
+        {"窗", "duty_corridor_window"},
+        {"铜鼎", "duty_corridor_ding"},
+        {"回廊西口", "duty_arch_west"},
+        {"回廊北口", "duty_arch_north"},
+    };
+
+    b.label("duty_corridor");
+    b.map("corridor4n", 10, 1, c4n);      // 拉上文书阁的门，站在门口
+    b.label("duty_corridor_back");
+    b.map("corridor4n", -1, -1, c4n);
+
+    b.label("duty_corridor_save");
+    b.savePrompt();
+    b.jump("duty_corridor_back");
+
+    b.label("duty_corridor_window");
+    b.narr("廊下的灯一盏一盏亮着，把地砖照成一条一条的灰金色。窗纸上映着灯的影子，风一过就晃。");
+    b.jump("duty_corridor_back");
+
+    b.label("duty_corridor_ding");
+    b.narr("铜鼎里的灰今夜没有动。他把手揣进袖子里，快步走了过去。");
+    b.jump("duty_corridor_back");
+
+    b.label("duty_office_locked");
+    b.narr("文书阁的灯已经吹了，门上落了闩。明天早会前要交的那一摞，还压在砚台下头。");
+    b.jump("duty_corridor_back");
+
+    b.label("duty_arch_west");
+    b.narr("西廊那头没有点灯，黑得看不见地砖。往那边去是回廊的另一头，绕回来只会更晚。");
+    b.jump("duty_corridor_back");
+
+    b.label("duty_arch_north");
+    b.narr("北边的拱门下站着风。过了这道门是中廊，离家越来越远——他今天已经绕过一次了。");
+    b.jump("duty_corridor_back");
+
+    // ---- 推开值守室的门：进屋 ----
+    // 进屋只念三句交代，然后**把操控交给你**：自己走回自己的桌前，
+    // 在「桌子」上按回车才触发抄写那段动画（见本文件后面的 duty_desk）。
+    b.label("duty_door_in");
+    b.branch("duty_intro_seen", "1", "duty_free");
+    b.setFlag("duty_intro_seen", "1");
+
     b.label("duty_night");
 
     // =====================================================================
     //  五、夜晚，值守室
+    //  这里是一张真的地图（夜间版）：进屋以后就归你操控——可以在屋里走一圈、
+    //  在记事碑前存档；走到桌前按回车开始抄写；也可以直接走到床上睡下。
     // =====================================================================
     b.scene("五 · 夜晚，值守室", "scene_room_night2");
-    b.narr("天色彻底暗下来。天庭的夜，是没有星也没有月的黑，暗沉沉地压在所有屋顶上，像一口倒扣的锅。");
-    b.narr("四不相拖着步子走回值守室。下午的活没干完，上司临走前把一摞没抄完的文卷摔在他桌上——「明天早会前交齐。」");
-    b.narr("他抄到掌灯时分才收笔，爪尖磨得发红。低头一看，那道暗金色的痕迹已经没了，像从没存在过一样。");
-    b.narr("可他总觉得，那道痕迹还在，在他的骨头里。他擦不掉。");
-    b.narr("他推开门，屋子里冷得像冰窖。窗纸破的三个洞还在漏风，他懒得补，裹紧棉絮坐在床边，发了好一会儿呆。");
+    b.narr("天庭的夜是没有星也没有月的黑，暗沉沉地压在所有屋顶上，像一口倒扣的锅。");
+    b.narr("值守室的门推开时「吱呀」响了一声。屋里冷得像冰窖，窗纸上破着的三个洞还在漏风，呜呜地响。");
+    b.narr("下午的活到底没干完。上司临走把那摞没抄完的文卷摔在他桌上——「明天早会前交齐。」");
+
+    // 出口表压在 9 项以内（数字键 1~9 才够用）
+    std::vector<MapExit> dutyExits = {
+        {"床", "duty_sleep"},
+        {"桌子", "duty_desk"},
+        {"笔墨", "duty_ink"},
+        {"案卷", "duty_scroll"},
+        {"油灯", "duty_lamp"},
+        {"窗", "duty_window"},
+        {"棉絮", "duty_fluff"},
+        {"记事碑", "duty_save"},
+        {"门", "duty_door"},
+    };
+
+    // ---- 屋里自由走动：从门口进来，接下来怎么走、什么时候坐到桌前，都由你决定 ----
+    b.label("duty_free");
+    b.map("dutyroom", 3, 12, dutyExits);
+
+    b.label("duty_back");
+    b.map("dutyroom", -1, -1, dutyExits);
+
+    b.label("duty_save");
+    b.savePrompt();
+    b.jump("duty_back");
+
+    // ---- 桌前抄写：在「桌子」上按回车以后，是一段**不能操控**的演出 ----
+    //  坐下 → 挑灯（灯在「灯」「火」之间一明一暗）→ 一张一张抄 → 抄完
+    //  自己走到床边 → 爬上床、裹进棉絮里睡着。演完从「床」这个出口
+    //  自动接上「六 · 深夜，值守室」（四不遇进门那场）。
+    b.label("duty_desk");
+    {
+        MapActor nar;
+        nar.id = "narrator";
+        nar.name = "旁白";
+        nar.unseen = true;
+        nar.x = 1;
+        nar.y = 1;
+        nar.steps.push_back(ScriptBuilder::actPMove(13, 3, 120));   // 先自己走到桌前
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "桌上摊着昨天没抄完的文卷，边上压着一块缺了角的砚台。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他把袖子往上卷了一道，坐下，把最上面那一卷在灯下摊平。"));
+        // 挑灯：灯芯一明一暗（灯 ↔ 火）
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "火", 240));
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "灯", 190));
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "火", 230));
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "灯", 200));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "墨是现磨的。笔尖落下去，屋里就只剩笔在纸上走的沙沙声，和破窗洞里的呜呜风声。"));
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "火", 250));
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "灯", 190));
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "火", 240));
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "灯", 190));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "一张一张，抄到掌灯时分。爪尖磨得发红，纸边被他的爪印蹭得发黑。"));
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "火", 250));
+        nar.steps.push_back(ScriptBuilder::actTile(16, 2, "灯", 200));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "最后一笔落下。他把笔搁回砚边，长长地呼出一口气。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "抄到这会儿，眼皮开始打架了。他抬手揉了揉眼睛，笔在指间停了一会儿，停得比平常久。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "低头一看，白天那道暗金色的痕迹已经没了，像从没存在过一样。可他总觉得，它还在，在他的骨头里。"));
+        nar.steps.push_back(ScriptBuilder::actPMove(2, 5, 110));   // 抄完自己走到床边
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他爬上床，脱了外袍，裹进那床旧棉絮里。棉絮有一股陈年的潮味，怎么晒都晒不干。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他睡得太熟了，没有听见那扇门被推开的声音。"));
+        nar.steps.push_back(ScriptBuilder::actFinish());
+
+        // 这张演出图的「床」不再是「睡下」，而是接着演深夜那一场
+        std::vector<MapExit> copyExits;
+        for (std::size_t i = 0; i < dutyExits.size(); ++i) {
+            if (dutyExits[i].location == "床") copyExits.push_back({"床", "duty_deepnight"});
+            else copyExits.push_back(dutyExits[i]);
+        }
+
+        std::vector<MapActor> actors;
+        actors.push_back(nar);
+        b.mapWithActors("dutyroom", -1, -1, copyExits, actors);
+    }
+    b.jump("duty_deepnight");
+
+    b.label("duty_ink");
+    b.narr("砚池里的墨已经干了，干成一层壳。他用指甲刮了一下，刮下来一点黑灰。");
+    b.jump("duty_back");
+
+    b.label("duty_scroll");
+    b.narr("竹简按日子码在桌角，最上面那卷还差半句。笔搁在砚边，笔尖朝上，像一根小小的骨头。");
+    b.jump("duty_back");
+
+    b.label("duty_lamp");
+    b.narr("油灯里的油只剩一个底。火苗很小，风一过就歪一下，把影子在墙上推来推去。");
+    b.jump("duty_back");
+
+    b.label("duty_window");
+    b.narr("窗纸上破着的三个洞，一大两小。风从洞里钻进来，屋里就跟着响三声。");
+    b.narr("他伸手想把洞捏住，指尖伸到一半又放下了。补不补，夜里都一样冷。");
+    b.jump("duty_back");
+
+    b.label("duty_fluff");
+    b.narr("墙角那一撮旧棉絮已经发黄了，一碰就散，像一小堆落了雪的灰。");
+    b.jump("duty_back");
+
+    b.label("duty_door");
+    b.narr("门是他自己带上的。门轴叫了一声，现在安静了。");
+    b.narr("他把门闩推上去——今夜外面再大的风，也别想把它吹开。");
+    b.jump("duty_back");
+
+    // ---- 睡下：躺进棉絮里，接上后面那场梦 ----
+    b.label("duty_sleep");
+    b.narr("他爬上床，脱了外袍，裹进那床旧棉絮里。棉絮有一股陈年的潮味，怎么晒都晒不干。");
     b.narr("他在想白天那只兽。典狱长，整个天庭都怕的典狱长，为什么要用那种眼神看他？");
     b.say("四不相", "……四不遇。", speaker::SIBUXIANG);
     b.narr("他念出这个名字的时候顿了一下。典狱长的名字。他以前从来不敢想，也从来没记住过。");
@@ -1051,74 +1340,399 @@ Script buildPrologue() {
 
     // =====================================================================
     //  六、深夜，值守室门开
+    //  这一段是**地图里的动画**（不能操控）：
+    //   四不遇从门口进来 → 贴着桌腿的阴影踮脚走到床边蹲下 →
+    //   对着床上说话 → 四不相被惊醒、坐起来 → 两个人的对话 →
+    //   他转身走回门口、推门出去 → 剩下的话由四不相自己坐在床上说完。
+    //  演完从「床」这个出口自动接「七」。
     // =====================================================================
     b.scene("六 · 深夜，值守室", "scene_room_door");
-    b.narr("门被轻轻拉开一条缝。没有声音。像一只爪子用了一万年的熟练度，让门轴连一声呻吟都没有发出来。");
-    b.narr("一只灰白色的幼崽从缝里挤进来。琥珀色的眼睛在黑暗中亮了一瞬，又暗下去，像怕自己的光吵醒了床上的白麒麟。");
-    b.narr("他很小，小到可以藏在桌腿的阴影里。他踮着脚走到床边，爪尖搭在床沿上，没有碰四不相。");
-    b.say("灰白色幼崽", "哥……我来看你了……今天你在走廊上撞到我了……你跟我说对不起……你说「我还有人要等」……你在等谁啊……", speaker::SIBUYU);
-    b.narr("他的声音很轻，轻到像在哄一个睡着的人。他等了一会儿，四不相没有醒。");
-    b.say("灰白色幼崽", "你在等我吗？你是不是在等我？你是不是……已经忘了你在等我？", speaker::SIBUYU);
-    b.narr("然后他停住了。因为四不相在梦里翻了个身，眉头皱了一下——他听见了什么，极远极远的声音，像从雪地里传来的。");
-    b.narr("四不遇的爪尖颤了一下。他张了张嘴，没来得及缩回爪子——四不相醒了。");
-    b.narr("四不相睁开眼，看见床边蹲着一只灰白色的幼崽。他先是迷茫，然后认出了那双眼睛——琥珀色的，和白天走廊里那只兽的眼睛一模一样。");
-    b.narr("他坐起来，往下缩了缩，爪尖攥紧了棉絮边缘，把被子往上拉了拉。");
-    b.say("四不相", "典、典狱长大人……您怎么来这儿了？这里不是您该待的地方……您回去吧……", speaker::SIBUXIANG);
-    b.narr("幼崽愣住了。琥珀色的眼睛亮了一下——像一盏在风里摇了很久的灯，忽然被人拢住了——然后暗下去了。");
-    b.narr("他站了很久。他的爪尖还搭在床沿上。他是想碰他的。他想了很久了。可他不敢。");
-    b.say("灰白色幼崽", "哥……你不记得我了？", speaker::SIBUYU);
-    b.narr("他说这句话的时候，声音很轻，轻到像他自己都不信会有人回答。可他还是问了。他每次都会问。他每次都知道答案。");
-    b.narr("他脚边的阴影里，一朵极小的荼蘼花正悄悄地、无声地卷起花瓣，像在替他把没能喊出来的那一句吞回去。");
-    b.say("四不相", "我……没有弟弟。", speaker::SIBUXIANG);
-    b.narr("他说得很平静。平静得像一把封了鞘的刀。说完之后，他自己都觉得，那句话像从很远的、被洗干净的地方传来的回声。");
-    b.narr("他看着那只幼崽——他看见他琥珀色的眼睛暗了一瞬，像一颗快要碎掉的琥珀，撑着一道裂缝，没有彻底裂开。");
-    b.narr("可他看出来了。那一道裂缝，是最后一次了。");
-    b.say("灰白色幼崽", "……嗯。我知道了。", speaker::SIBUYU);
-    b.narr("他转身，一步一步走向门口。他的尾巴拖在地上，缺了那一截的地方在轻轻颤着。");
-    b.narr("他走到门边的时候，爪尖搭在门框上，停住了。他没有回头。他在等一个声音。一个他等了一万年的声音。");
-    b.say("四不相", "……你叫什么名字？", speaker::SIBUXIANG);
-    b.narr("幼崽在门缝的光里停住了，没有回头。");
-    b.say("灰白色幼崽", "……四不遇。", speaker::SIBUYU);
-    b.say("四不相", "四不遇……好名字。我好像……在梦里听过。", speaker::SIBUXIANG);
-    b.narr("幼崽的爪尖抠进木框里，木屑落了一地。他的琥珀色眼睛在黑暗里亮了一瞬——然后，那道裂缝终于裂开了。");
-    b.narr("没有声音。没有碎响。只是有什么东西，在他心里彻底断开了。");
-    b.say("灰白色幼崽", "……嗯。你听过。", speaker::SIBUYU);
-    b.narr("他推开门，走了出去。门关上了。他在门外站了很久，极轻的，像是在等什么。");
-    b.narr("门里面安安静静的，像没有人来过。");
-    b.narr("四不相坐在床上，低头看着自己的爪心。那里不知什么时候多了一根灰白色的绒毛。");
-    b.say("四不相", "四不遇……我好像真的……在梦里听过。", speaker::SIBUXIANG);
-    b.narr("他低下头，把脸埋进爪心里。风从破纸洞里灌进来，呜呜地响，像有谁在很远的地方替他回答了一个问题——但那个回答，他听不见了。");
-    b.narr("他不知道自己为什么想哭。他只是觉得，那只幼崽转身的时候，自己的心口缺了一块。");
-    b.narr("他躺下去，蜷进棉絮里，闭上眼睛。黑暗淹没了整个房间。他睡着了。");
-    b.narr("这一次，他睡着的时候，有一粒淡金色的光从门缝里渗进来，落在他眉心。他没有醒。");
-    b.narr("光渗进他的梦里，把他拉向未知的方向。");
+    {
+        MapActor sy;
+        sy.id = "sibuyu";
+        sy.name = "四不遇";
+        sy.glyph = "遇";
+        sy.color = speaker::SIBUYU;
+        sy.x = 3;
+        sy.y = 12;                                  // 从门口那条缝里进来
+        sy.steps.push_back(ScriptBuilder::actNarr("门被轻轻拉开一条缝。没有声音。像一只爪子用了一万年的熟练度，让门轴连一声呻吟都没有发出来。"));
+        sy.steps.push_back(ScriptBuilder::actMove(3, 10));      // 从缝里挤进来
+        sy.steps.push_back(ScriptBuilder::actNarr("一只灰白色的幼崽从缝里挤进来。琥珀色的眼睛在黑暗中亮了一瞬，又暗下去，像怕自己的光吵醒了床上的白麒麟。"));
+        sy.steps.push_back(ScriptBuilder::actMove(5, 8, 180));  // 藏在桌腿的阴影里往里走
+        sy.steps.push_back(ScriptBuilder::actMove(5, 4, 160));  // 踮着脚走到床边，蹲下
+        sy.steps.push_back(ScriptBuilder::actNarr("他很小，小到可以藏在桌腿的阴影里。他踮着脚走到床边，爪尖搭在床沿上，没有碰四不相。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不遇",
+            "哥……我来看你了……今天你在走廊上撞到我了……你跟我说对不起……你说「我还有人要等」……你在等谁啊……",
+            speaker::SIBUYU));
+        sy.steps.push_back(ScriptBuilder::actNarr("他的声音很轻，轻到像在哄一个睡着的人。他等了一会儿，四不相没有醒。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不遇",
+            "你在等我吗？你是不是在等我？你是不是……已经忘了你在等我？", speaker::SIBUYU));
+        sy.steps.push_back(ScriptBuilder::actNarr("然后他停住了。因为四不相在梦里翻了个身，眉头皱了一下——他听见了什么，极远极远的声音，像从雪地里传来的。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("四不遇的爪尖颤了一下。他张了张嘴，没来得及缩回爪子——四不相醒了。"));
+        sy.steps.push_back(ScriptBuilder::actPMove(3, 5, 170));  // 白麒麟在被子里翻了个身，坐起来
+        sy.steps.push_back(ScriptBuilder::actNarr("四不相睁开眼，看见床边蹲着一只灰白色的幼崽。他先是迷茫，然后认出了那双眼睛——琥珀色的，和白天走廊里那只兽的眼睛一模一样。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("他坐起来，往下缩了缩，爪尖攥紧了棉絮边缘，把被子往上拉了拉。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不相",
+            "典、典狱长大人……您怎么来这儿了？这里不是您该待的地方……您回去吧……", speaker::SIBUXIANG));
+        sy.steps.push_back(ScriptBuilder::actNarr("幼崽愣住了。琥珀色的眼睛亮了一下——像一盏在风里摇了很久的灯，忽然被人拢住了——然后暗下去了。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("他站了很久。他的爪尖还搭在床沿上。他是想碰他的。他想了很久了。可他不敢。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不遇", "哥……你不记得我了？", speaker::SIBUYU));
+        sy.steps.push_back(ScriptBuilder::actNarr("他说这句话的时候，声音很轻，轻到像他自己都不信会有人回答。可他还是问了。他每次都会问。他每次都知道答案。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("他脚边的阴影里，一朵极小的荼蘼花正悄悄地、无声地卷起花瓣，像在替他把没能喊出来的那一句吞回去。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不相", "我……没有弟弟。", speaker::SIBUXIANG));
+        sy.steps.push_back(ScriptBuilder::actNarr("他说得很平静。平静得像一把封了鞘的刀。说完之后，他自己都觉得，那句话像从很远的、被洗干净的地方传来的回声。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("他看着那只幼崽——他看见他琥珀色的眼睛暗了一瞬，像一颗快要碎掉的琥珀，撑着一道裂缝，没有彻底裂开。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("可他看出来了。那一道裂缝，是最后一次了。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不遇", "……嗯。我知道了。", speaker::SIBUYU));
+        sy.steps.push_back(ScriptBuilder::actNarr("他转身，一步一步走向门口。尾巴垂在地上，一路轻轻地颤着——是完完整整的一条，一截也不缺。"));
+        sy.steps.push_back(ScriptBuilder::actMove(3, 10, 200));  // 一步一步走回门边
+        sy.steps.push_back(ScriptBuilder::actNarr("他走到门边的时候，爪尖搭在门框上，停住了。他没有回头。他在等一个声音。一个他等了一万年的声音。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不相", "……你叫什么名字？", speaker::SIBUXIANG));
+        sy.steps.push_back(ScriptBuilder::actNarr("幼崽在门缝的光里停住了，没有回头。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不遇", "……四不遇。", speaker::SIBUYU));
+        sy.steps.push_back(ScriptBuilder::actSay("四不相", "四不遇……好名字。我好像……在梦里听过。", speaker::SIBUXIANG));
+        sy.steps.push_back(ScriptBuilder::actNarr("幼崽的爪尖抠进木框里，木屑落了一地。他的琥珀色眼睛在黑暗里亮了一瞬——然后，那道裂缝终于裂开了。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("没有声音。没有碎响。只是有什么东西，在他心里彻底断开了。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不遇", "……嗯。你听过。", speaker::SIBUYU));
+        sy.steps.push_back(ScriptBuilder::actNarr("他推开门，走了出去。门关上了。他在门外站了很久，极轻的，像是在等什么。"));
+        sy.steps.push_back(ScriptBuilder::actMove(3, 12, 220));  // 跨出门外
+        sy.steps.push_back(ScriptBuilder::actDisappear());
+        sy.steps.push_back(ScriptBuilder::actNarr("门里面安安静静的，像没有人来过。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("四不相坐在床上，低头看着自己的爪心。那里不知什么时候多了一根灰白色的绒毛。"));
+        sy.steps.push_back(ScriptBuilder::actSay("四不相", "四不遇……我好像真的……在梦里听过。", speaker::SIBUXIANG));
+        sy.steps.push_back(ScriptBuilder::actNarr("他低下头，把脸埋进爪心里。风从破纸洞里灌进来，呜呜地响，像有谁在很远的地方替他回答了一个问题——但那个回答，他听不见了。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("他不知道自己为什么想哭。他只是觉得，那只幼崽转身的时候，自己的心口缺了一块。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("他躺下去，蜷进棉絮里，闭上眼睛。黑暗淹没了整个房间。他睡着了。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("这一次，他睡着的时候，有一粒淡金色的光从门缝里渗进来，落在他眉心。他没有醒。"));
+        sy.steps.push_back(ScriptBuilder::actNarr("光渗进他的梦里，把他拉向未知的方向。"));
+        sy.steps.push_back(ScriptBuilder::actFinish());
+
+        std::vector<MapActor> actors;
+        actors.push_back(sy);
+        // 演完从「床」这个出口接下一天（七 · 梦中）
+        b.mapWithActors("dutyroom", -1, -1, {{"床", "duty_dream"}}, actors,
+                        "六 · 深夜，值守室");
+    }
+
+    b.label("duty_dream");
 
     // =====================================================================
-    //  七、梦中，遇龙雪山
+    //  浮梦 · 四不相梦里那条路（序章 七 — 十）
+    //  一进入浮梦，看到的就是遇龙雪山；再往里是同游川、梦栖林，
+    //  小径尽头是一座农家小院。四段全是**真的地图**，文字都挂在地图下方，
+    //  不再清屏打黑底旁白。
+    //    七 · 遇龙雪山 —— 天光把黄昏和黎明揉在一起，雪里开着忆棠（白花）
+    //    八 · 同游川   —— 河底流着孟极和麒麟的回忆
+    //    九 · 梦栖林   —— 林中一道白色的余影（孟极烬光）
+    //    十 · 农家小院 —— 小径尽头的院子
     // =====================================================================
-    b.scene("七 · 梦中，遇龙雪山", "scene_dream_snow");
-    b.narr("他梦见自己站在一片白茫茫的雪地上。风很大，雪粒打在脸上，像碎了的冰。");
-    b.narr("远处，一只灰白色的幼崽正在跑——跑得很慢，跌跌撞撞的，像是在等他。");
-    b.narr("四不相追上去。爪子陷进雪里，拔出来又陷进去，可他不想停。");
-    b.narr("他不知道自己为什么跑。他只是觉得——如果这次追不到，就再也不会有下一次了。");
-    b.say("四不相", "……你等等……你等等我……", speaker::SIBUXIANG);
-    b.narr("他跑近了。那只灰白色的幼崽就在前面几步远的地方，缺了一截的尾巴尖在风里晃着，像一根快要燃尽的香。");
-    b.narr("四不相伸出爪子，指尖快要碰到那截尾巴了——");
-    b.narr("幼崽停下来，回过头。赤红色的眼睛在雪光里亮着，像一盏快要燃尽的灯，里面全是水光。");
-    b.say("灰白色幼崽", "你追到我了。", speaker::YOULING);
-    b.narr("四不相张了张嘴。他想问：你是谁？你叫什么？我们见过吗？可他一个字也没说出来。");
-    b.narr("他看着那只幼崽——灰白色的毛发被雪弄得湿漉漉的，赤红色的眼睛亮晶晶的，蓬松的尾巴尖在身后轻轻晃着。");
-    b.narr("他的胸口忽然疼了一下。很深。像有什么东西，一直埋在那里，终于被挖出来了——但他不知道那是什么。");
-    b.narr("白光从幼崽身后涌过来。很慢，像水漫过堤坝，漫过四不相的蹄踝，漫过他的膝盖，漫过他的腰腹。");
-    b.narr("他没有躲。他看见那只幼崽在光里看着他，嘴角弯了一下——很轻，轻到像怕吓到他——像一朵开了一万年、终于等到开花那天的花。");
-    b.say("灰白色幼崽", "……进来吧。我都给你留着呢。", speaker::YOULING);
-    b.narr("白光吞没了一切。雪地、风、赤红色的眼睛、那截缺了的尾巴尖——全部消失了。");
-    b.narr("四不相觉得自己沉进了一片很暖很暖的光里，像沉进了一场，被等了一万年的梦里。");
+    std::vector<MapExit> dreamExits1 = {
+        {"忆棠", "dream1_tang"},
+        {"山径", "dream_river_in"},
+        {"记事碑", "dream1_save"},
+    };
+    std::vector<MapExit> dreamExits2 = {
+        {"忆棠", "dream2_tang"},
+        {"同游川", "dream2_water"},
+        {"浅滩", "dream2_ford"},
+        {"川径", "dream_forest_in"},
+        {"记事碑", "dream2_save"},
+    };
+    std::vector<MapExit> dreamExits3 = {
+        {"林径", "dream_yard_in"},
+        {"记事碑", "dream3_save"},
+    };
+    std::vector<MapExit> dreamExits4 = {
+        {"屋门", "dream_end"},
+        {"井", "dream4_well"},
+        {"石桌", "dream4_stone"},
+        {"院里的树", "dream4_tree"},
+        {"记事碑", "dream4_save"},
+    };
+
+    // ---------------------------------------------------------------- 七 --
+    b.scene("七 · 浮梦，遇龙雪山", "scene_dream_snow");
+    {
+        MapActor nar;
+        nar.id = "narrator";
+        nar.name = "旁白";
+        nar.unseen = true;      // 不画在地图上，只把话挂到地图下方
+        nar.x = 20;
+        nar.y = 11;
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他睁开眼，脚下是一片雪。没有风，也不冷——梦里的雪不冷。"));
+        // 天光会动：雪面上先亮起几块光，再一句一句铺开（这就是雪山那段的小动画）
+        nar.steps.push_back(ScriptBuilder::actTile(9, 6, "光", 200));
+        nar.steps.push_back(ScriptBuilder::actTile(30, 8, "光", 200));
+        nar.steps.push_back(ScriptBuilder::actTile(12, 3, "光", 220));
+        nar.steps.push_back(ScriptBuilder::actTile(34, 10, "光", 220));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "抬头是遇龙雪山。天光像有人用最温柔的力度，把黄昏和黎明揉在了一起：一半橘，一半青白，铺在雪面上，一直铺到天边。"));
+        nar.steps.push_back(ScriptBuilder::actTile(7, 9, "光", 200));
+        nar.steps.push_back(ScriptBuilder::actTile(26, 6, "光", 200));
+        nar.steps.push_back(ScriptBuilder::actTile(17, 9, "光", 220));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "雪里长着一种树。没有叶子，只开白花，一朵一朵亮得像点着的灯。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他认得它们——忆棠。只在梦里开花的树。白花落在哪儿，哪儿就记起一件事。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "一条小径从脚下往前伸，绕过半座雪山，最后钻进山壁上一道唯一的缺口里。他顺着它走。"));
+        nar.steps.push_back(ScriptBuilder::actFinish());
+
+        std::vector<MapActor> actors;
+        actors.push_back(nar);
+        b.mapWithActors("dream1", -1, -1, dreamExits1, actors, "七 · 浮梦，遇龙雪山");
+    }
+
+    b.label("dream1_free");       // 醒来以后这张图就归你走
+    b.map("dream1", -1, -1, dreamExits1);
+
+    b.label("dream1_tang");
+    b.narr("一朵白花落在他爪尖上，凉了一下，就化了。");
+    b.narr("他忽然想起一句很旧的话：开到荼蘼，春天就尽了。可这树开的是春天以前的花——它开的时候，春天还没来。");
+    b.jump("dream1_free");
+
+    b.label("dream1_save");
+    b.savePrompt();
+    b.jump("dream1_free");
+
+    // ---------------------------------------------------------------- 八 --
+    b.label("dream_river_in");
+    b.scene("八 · 同游川", "scene_dream_river");
+    {
+        MapActor nar;
+        nar.id = "narrator";
+        nar.name = "旁白";
+        nar.unseen = true;
+        nar.x = 20;
+        nar.y = 11;
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "雪到这里就到头了。再往前，是一条横着流过去的河。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "水很浅，也很清，清得能看见河底——可河底流的不是沙，是梦。一丝一丝的，亮的，从上游淌下去。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他蹲下来看了很久。他看清了两道影子：一头灰白色的兽，还有一头麒麟，一前一后地走在河里，走了很久很久。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他不知道他们是谁。可他看着看着，眼睛就热了。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "河中间有一处浅滩。他踩着水蹚过去，水只没到蹄踝；上了北岸，小径又接着往山里走，一直通到山脊上那个缺口。"));
+        nar.steps.push_back(ScriptBuilder::actFinish());
+
+        std::vector<MapActor> actors;
+        actors.push_back(nar);
+        b.mapWithActors("dream2", -1, -1, dreamExits2, actors, "八 · 同游川");
+    }
+
+    b.label("dream2_free");
+    b.map("dream2", -1, -1, dreamExits2);
+
+    b.label("dream2_water");
+    b.narr("河水从爪边淌过去，一丝一丝的亮光绕着他的指头转了一圈，又走了。");
+    b.narr("水底那两道影子还在走。一头灰白色的兽，一头麒麟，一前一后，谁也不说话，可谁也不肯走到对方前头去。");
+    b.narr("他伸出手，影子碎了；手一收回来，影子又合上了，还是那样一走一辈子地走。");
+    b.jump("dream2_free");
+
+    b.label("dream2_tang");
+    b.narr("岸上也开着忆棠。这里的白花开得比雪山上密，一朵挨着一朵，把半边天都照亮了。");
+    b.narr("有一朵花里，停着一句他没听清的话。他把耳朵凑过去，花就谢了。");
+    b.jump("dream2_free");
+
+    b.label("dream2_ford");
+    b.narr("浅滩底下铺着细细的白石，踩上去不冷。水流过去，把石上的光洗得更亮了。");
+    b.jump("dream2_free");
+
+    b.label("dream2_save");
+    b.savePrompt();
+    b.jump("dream2_free");
+
+    // ---------------------------------------------------------------- 九 --
+    b.label("dream_forest_in");
+    b.scene("九 · 梦栖林", "scene_dream_forest");
+    {
+        MapActor nar;
+        nar.id = "narrator";
+        nar.name = "旁白";
+        nar.unseen = true;
+        nar.x = 20;
+        nar.y = 11;
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "过了河，雪没有了。树密起来，密得连天光都筛成一小块一小块，落在地上像碎掉的水。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "这地方他没来过。可他一进来就知道它叫什么——梦栖林。梦里的人和梦里的事，都歇在这儿。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "林子只有一条小径。小径弯来弯去，弯到最里面，就看见一道白色的影子。"));
+        nar.steps.push_back(ScriptBuilder::actFinish());
+
+        std::vector<MapActor> actors;
+        actors.push_back(nar);
+        b.mapWithActors("dream3", -1, -1, dreamExits3, actors, "九 · 梦栖林");
+    }
+    {
+        // 那道白色的余影：烬光留下的一小半分魂，只为陪着四不遇、让他开心一点。
+        MapActor ying;
+        ying.id = "jingguang";
+        ying.name = "白色余影";
+        ying.glyph = "影";
+        ying.color = color::WHITE;
+        ying.x = 27;
+        ying.y = 2;
+        ying.steps.push_back(ScriptBuilder::actWait(260));
+        ying.steps.push_back(ScriptBuilder::actMove(20, 2, 190));
+        ying.steps.push_back(ScriptBuilder::actMove(20, 5, 170));
+        ying.steps.push_back(ScriptBuilder::actNarr(
+            "那道影子飘过来了。四只爪子离地半寸，白得透明——一头兽的轮廓。看不清它原来的样子，只有一双眼睛还留着颜色：雨过天晴的那种青，最深处一点金。"));
+        ying.steps.push_back(ScriptBuilder::actSay("白色余影", "……你来了。", color::WHITE));
+        ying.steps.push_back(ScriptBuilder::actNarr(
+            "这双眼睛他认得。梦里梦外，天底下只此一双。"));
+        ying.steps.push_back(ScriptBuilder::actSay("白色余影",
+            "别皱眉。我留在这儿，不是为了看你皱眉的——也不是为了你。", color::WHITE));
+        ying.steps.push_back(ScriptBuilder::actNarr(
+            "影子笑了一下。它没有脸，可它就是笑了一下。"));
+        ying.steps.push_back(ScriptBuilder::actSay("白色余影",
+            "我是在等他。四不遇。", color::WHITE));
+        ying.steps.push_back(ScriptBuilder::actNarr(
+            "烬光走之前，把自己剩下的那一点撕了一小半下来，搁在这片林子里。不是给谁陪葬，是给那孩子做伴——他一个人走夜路走得太久了，梦里也不肯让人陪。"));
+        ying.steps.push_back(ScriptBuilder::actNarr(
+            "孟极的先祖叫「光」，烬光是那一脉的直孙。名字是从「终焉余烬」里取的两个字：烬是烧到最后的，光是不肯灭的。"));
+        ying.steps.push_back(ScriptBuilder::actSay("白色余影",
+            "他舍不得他。这么简单的一件事，天庭里没有一个人看得懂。", color::WHITE));
+        ying.steps.push_back(ScriptBuilder::actSay("白色余影",
+            "他笑一回，我就亮一回；他哪晚不走夜路，我就哪晚歇着。", color::WHITE));
+        ying.steps.push_back(ScriptBuilder::actSay("白色余影",
+            "所以别问我叫什么。你只要记得——他一个人走的那条夜路，边上多了一盏灯。", color::WHITE));
+        ying.steps.push_back(ScriptBuilder::actNarr(
+            "四不相抬起爪，想去碰那双眼睛。影子往回缩了缩，又停住了。"));
+        ying.steps.push_back(ScriptBuilder::actSay("白色余影",
+            "碰不着了。可我不会散——他留得比你想的多。", color::WHITE));
+        ying.steps.push_back(ScriptBuilder::actNarr(
+            "影子转过头，朝林子东边低低地叫了一声——那里有一条更细的小径，尽头亮着一盏灯。"));
+        ying.steps.push_back(ScriptBuilder::actSay("白色余影",
+            "沿着小径走。他在等你，等了很多年了。", color::WHITE));
+        ying.steps.push_back(ScriptBuilder::actSay("白色余影",
+            "回头再来看我。我就在这儿。", color::WHITE));
+        ying.steps.push_back(ScriptBuilder::actNarr(
+            "他再回头时，那影子已经散成一小片雪，落在他的爪尖上，凉了一下，却没有化。"));
+        ying.steps.push_back(ScriptBuilder::actDisappear());
+        ying.steps.push_back(ScriptBuilder::actFinish());
+
+        std::vector<MapActor> actors;
+        actors.push_back(ying);
+        b.mapWithActors("dream3", -1, -1, dreamExits3, actors, "九 · 梦栖林");
+    }
+
+    b.label("dream3_free");
+    b.map("dream3", -1, -1, dreamExits3);
+
+    b.label("dream3_save");
+    b.savePrompt();
+    b.jump("dream3_free");
+
+    // ---------------------------------------------------------------- 十 --
+    b.label("dream_yard_in");
+    b.scene("十 · 农家小院", "scene_dream_yard");
+    {
+        MapActor nar;
+        nar.id = "narrator";
+        nar.name = "旁白";
+        nar.unseen = true;
+        nar.x = 20;
+        nar.y = 11;
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "小径的尽头是一道矮篱。篱后是一间屋，屋顶压着雪，窗里透出一点暖黄的光。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "院门虚掩着。井台上放着一只瓢，瓢里的水结了一层薄冰。晾架上挂着两条洗过的布，冻得硬邦邦的。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "这是他梦里来过无数次的地方。他知道推开门会看见什么——可他还是站在院子里，站了一会儿。"));
+        nar.steps.push_back(ScriptBuilder::actFinish());
+
+        std::vector<MapActor> actors;
+        actors.push_back(nar);
+        b.mapWithActors("dream4", -1, -1, dreamExits4, actors, "十 · 农家小院");
+    }
+
+    b.label("dream4_free");
+    b.map("dream4", -1, -1, dreamExits4);
+
+    b.label("dream4_well");
+    b.narr("井水结了冰。冰面上映着窗里的那点黄光，一晃一晃的。");
+    b.jump("dream4_free");
+
+    b.label("dream4_stone");
+    b.narr("石桌上摆着两只碗，两双筷子。一只碗扣着，一只碗敞着——敞着的那只里，饭还冒着气。");
+    b.jump("dream4_free");
+
+    b.label("dream4_tree");
+    b.narr("院角那棵树也没有叶子，可它不开白花。它结着一种小小的、青色的果子，硬得像石头。");
+    b.narr("这棵树他记得。它一直在。它比这间屋子还老。");
+    b.jump("dream4_free");
+
+    b.label("dream4_save");
+    b.savePrompt();
+    b.jump("dream4_free");
+
+    // ---- 推门：梦的尽头 ----
+    b.label("dream_end");
+    {
+        MapActor nar;
+        nar.id = "narrator";
+        nar.name = "旁白";
+        nar.unseen = true;
+        nar.x = 20;
+        nar.y = 11;
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他把手按在门上。门没有闩，一推就开了。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "屋里烧着一盆炭，火不旺，却把整间屋子烘得暖烘烘的。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "桌子那头，一只灰白色的幼崽正坐着。琥珀色的眼睛在暖光里亮着，像一盏快要燃尽的灯，里面全是水光。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "额上一对小角立在暖光里，干干净净的，一点也没淡。尾巴在身后轻轻地晃，完整的一条，尖上那撮软毛扫着地。"));
+        nar.steps.push_back(ScriptBuilder::actSay("灰白色幼崽", "你追到我了。", speaker::YOULING));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "四不相张了张嘴。他想问：你是谁？你叫什么？我们见过吗？可他一个字也没说出来。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他的胸口忽然疼了一下。很深。像有什么东西一直埋在那里，终于被挖出来了——但他不知道那是什么。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "白光从幼崽身后涌过来。很慢，像水漫过堤坝，漫过四不相的蹄踝，漫过他的膝盖，漫过他的腰腹。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "他没有躲。他看见那只幼崽在光里看着他，嘴角弯了一下——很轻，轻到像怕吓到他。"));
+        nar.steps.push_back(ScriptBuilder::actSay("灰白色幼崽",
+            "……进来吧。我都给你留着呢。", speaker::YOULING));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "白光吞没了一切。雪地、天光、忆棠、那条小径——全部消失了。"));
+        nar.steps.push_back(ScriptBuilder::actNarr(
+            "四不相觉得自己沉进了一片很暖很暖的光里，像沉进了一场，被等了一万年的梦里。"));
+        nar.steps.push_back(ScriptBuilder::actFinish());
+
+        std::vector<MapActor> actors;
+        actors.push_back(nar);
+        b.mapWithActors("dream4", -1, -1, dreamExits4, actors, "十 · 农家小院");
+    }
 
     // =====================================================================
     //  序章 · 完
     // =====================================================================
-    b.chapterEnd("序章 · 完", "故事，才刚刚开始。\n\n第一章「童年记忆篇」，敬请期待。");
+    // 结语之后接一段「感谢游玩」：正文逐行居中，见 Game::renderChapterEnd。
+    // 最后那一句红字（我在看着你······）和署名由渲染端补，不写在这里。
+    b.chapterEnd("序章 · 完",
+                 "故事，才刚刚开始。\n"
+                 "第一章「童年记忆篇」，敬请期待。\n"
+                 "\n"
+                 "—— 感谢游玩 ——\n"
+                 "\n"
+                 "一个序章，写了很久很久。\n"
+                 "从我当初想出四不遇、想出这个同人故事，\n"
+                 "到一段段 c++ 代码，一个浮梦，一个卑微的四不相。\n"
+                 "我没想过要重写，也没想过要重来，我也崩溃过，\n"
+                 "特别是深陷在一行行报错的代码、实现不了自己想要的效果的时候。\n"
+                 "可每次想停，我都会告诉自己：还有人在等我，\n"
+                 "死不相遇的故事不能就此终结。\n"
+                 "我知道我比不上《四叶苜蓿》，但，这也凝聚了我小小的心血。\n"
+                 "你们的每一次游玩、每一句话、每一条建议，\n"
+                 "都是我继续更新的动力。\n"
+                 "我会把四不遇一直写下去，写到，他们相遇，\n"
+                 "让那两个孩子，真正在一起。\n"
+                 "感谢一切给予我帮助的人！");
 
     return b.done();
 }

@@ -40,7 +40,7 @@ namespace speaker {
 constexpr const char* SIBUXIANG = color::WHITE;   // 四不相 · 白麒麟
 constexpr const char* SIBUYU    = color::AMBER;   // 四不遇 · 灰麒麟
 constexpr const char* SHANGSI   = color::GRAY;    // 上司
-constexpr const char* YOULING   = color::RED;     // 梦中幼崽（赤红眼眸）
+constexpr const char* YOULING   = color::AMBER;   // 灰白色幼崽（琥珀色，和典狱长同色）
 constexpr const char* NARRATOR  = color::DIM;     // 旁白
 constexpr const char* SYSTEM    = color::GOLD;    // 系统
 }
@@ -52,7 +52,9 @@ constexpr int TYPE_DELAY_US = 55000;   // 55ms/字
 
 // ---- 存档 ----
 constexpr const char* SAVE_DIR   = "saves";
-constexpr int        SAVE_SLOTS  = 6;
+// 存档槽数量：20 个。存档窗里排成**两列 × 十行**（左边 1—10，右边 11—20），
+// 正好塞进一屏（10 行 + 边框 + 标题 + 提示 = 18 行），不用翻页。
+constexpr int        SAVE_SLOTS  = 20;
 
 // ---- 探索地图 ----
 // 地图上「一个人一个字」代表自己：四不相 = 相，四不遇 = 遇，上司 = 司。

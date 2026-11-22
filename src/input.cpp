@@ -1,5 +1,12 @@
 // ============================================================================
 //  花至荼蘼 —— 跨平台按键输入实现
+//
+//  POSIX 这一支（Linux / WSL / macOS）以前有个很坑的写法：用 fgetc(stdin)
+//  按键、却用 select(fd 0) 判断「有没有键」。stdio 会偷偷多读一截进自己的
+//  缓冲区，select 又只看内核缓冲区——于是「明明按了键，kbhit() 说没有」，
+//  地图 / 菜单循环就此原地空转，表现就是「卡在某个菜单，所有键都无效」。
+//  现在改成全程自己用 read() + 自己的小队列：读多少存多少，kbhit() 先看队列，
+//  不会再和 stdio 打架；stdin 断开（EOF）也不会再空转。
 // ============================================================================
 #include "input.h"
 
@@ -53,6 +60,8 @@ void restore() {
         g_mouseEnabled = false;
     }
 }
+
+void emergencyRestore() { restore(); }
 
 bool kbhit() { return _kbhit() != 0; }
 
@@ -151,26 +160,97 @@ std::string readLine() {
 
 #else
 // ----------------------------- POSIX ---------------------------------------
+#include <cerrno>
+#include <cstdio>
+#include <ctime>
+#include <deque>
 #include <termios.h>
 #include <unistd.h>
-#include <cstdio>
 #include <sys/select.h>
 
 namespace game::input {
 
 namespace {
+
 struct termios g_old_termios;
-bool g_inited = false;
+bool g_inited = false;     // 是否真的改过终端属性
+bool g_eof = false;        // stdin 已经断开：别再死等
+std::deque<unsigned char> g_queue;   // 自己缓冲，绝不和 stdio 抢字节
+
+// 等终端可读（timeoutMs < 0 表示死等）
+bool waitReadable(int timeoutMs) {
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(STDIN_FILENO, &fds);
+    struct timeval tv;
+    struct timeval* ptv = nullptr;
+    if (timeoutMs >= 0) {
+        tv.tv_sec = timeoutMs / 1000;
+        tv.tv_usec = (timeoutMs % 1000) * 1000;
+        ptv = &tv;
+    }
+    int r = select(STDIN_FILENO + 1, &fds, nullptr, nullptr, ptv);
+    return r > 0 && FD_ISSET(STDIN_FILENO, &fds);
+}
+
+// 把终端里已经到手的字节吸进队列。返回队列里有没有数据。
+bool pump(int timeoutMs) {
+    for (;;) {
+        if (!g_queue.empty()) return true;
+        if (g_eof) return false;
+        if (!waitReadable(timeoutMs)) return false;
+        unsigned char tmp[32];
+        ssize_t n = ::read(STDIN_FILENO, tmp, sizeof(tmp));
+        if (n > 0) {
+            g_queue.insert(g_queue.end(), tmp, tmp + static_cast<std::size_t>(n));
+            return true;
+        }
+        if (n == 0) {
+            g_eof = true;            // 终端断开 / 输入被关掉
+            return false;
+        }
+        if (errno == EINTR) continue;                       // 被信号打断：接着等
+        if (errno == EAGAIN || errno == EWOULDBLOCK) return false;
+        g_eof = true;
+        return false;
+    }
+}
+
+// 取一个字节；-1 表示没有（超时或断开）
+int nextByte(int timeoutMs) {
+    if (!pump(timeoutMs)) return -1;
+    int c = g_queue.front();
+    g_queue.pop_front();
+    return c;
+}
+
+void sleepMs(int ms) {
+    struct timespec ts;
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = static_cast<long>(ms % 1000) * 1000L * 1000L;
+    nanosleep(&ts, nullptr);
+}
+
 }  // namespace
 
 void init() {
-    tcgetattr(STDIN_FILENO, &g_old_termios);
+    g_eof = false;
+    g_queue.clear();
+    if (!isatty(STDIN_FILENO)) {
+        // stdin 不是终端（被重定向 / 被别的程序接管）：先说清楚，免得「按键全都没反应」
+        const char msg[] =
+            "[花至荼蘼] 警告：标准输入不是终端，键盘可能读不到。请直接在终端里运行本程序。\n";
+        ssize_t w = ::write(STDERR_FILENO, msg, sizeof(msg) - 1);
+        (void)w;
+    }
+    if (tcgetattr(STDIN_FILENO, &g_old_termios) != 0) return;   // 不是终端：照常往下走
+
     struct termios raw = g_old_termios;
-    raw.c_lflag &= ~(static_cast<tcflag_t>(ICANON) | static_cast<tcflag_t>(ECHO));
-    raw.c_cc[VMIN] = 1;   // 阻塞读 1 字节
+    raw.c_lflag &= ~static_cast<tcflag_t>(ICANON | ECHO);
+    raw.c_iflag &= ~static_cast<tcflag_t>(IXON | ICRNL);   // Ctrl+S 别冻住输出；回车给 '\r'
+    raw.c_cc[VMIN] = 1;                                    // 阻塞读，来一个字节返回一个
     raw.c_cc[VTIME] = 0;
-    tcsetattr(STDIN_FILENO, TCSANOW, &raw);
-    g_inited = true;
+    if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) == 0) g_inited = true;
 }
 
 void restore() {
@@ -178,37 +258,50 @@ void restore() {
         tcsetattr(STDIN_FILENO, TCSANOW, &g_old_termios);
         g_inited = false;
     }
+    g_queue.clear();
 }
 
-bool kbhit() {
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(STDIN_FILENO, &fds);
-    struct timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = 0;
-    return select(STDIN_FILENO + 1, &fds, nullptr, nullptr, &tv) > 0;
+// 崩溃 / 被 kill 时也要把终端还原，否则会留下一个「按键没反应」的黑洞终端
+void emergencyRestore() {
+    if (g_inited) tcsetattr(STDIN_FILENO, TCSANOW, &g_old_termios);
 }
+
+bool kbhit() { return pump(0); }
 
 int readKey() {
-    int c = fgetc(stdin);
-    if (c == 27) {  // 可能是 ESC，也可能是方向键前缀
-        if (!kbhit()) return KEY_ESC;
-        int c2 = fgetc(stdin);
-        if (c2 == '[') {
-            int c3 = fgetc(stdin);
-            switch (c3) {
+    int c = nextByte(-1);
+    if (c < 0) {
+        // stdin 断了（比如终端被关掉、输出被重定向）：当成 Esc，让界面能退出去。
+        // 以前这里返回 -1，菜单循环收到「无键」就一直空转，看着就是彻底卡死。
+        sleepMs(20);
+        return KEY_ESC;
+    }
+    if (c == 27) {   // ESC，也可能是方向键序列 ESC [ A / ESC O A
+        int seq[8];
+        int n = 0;
+        while (n < 8 && pump(25)) {
+            seq[n++] = g_queue.front();
+            g_queue.pop_front();
+        }
+        if (n == 0) return KEY_ESC;             // 单独一个 Esc
+        const int a = seq[0];
+        if (a == '[' || a == 'O') {
+            // 方向键可能带修饰（ESC [ 1 ; 2 A 之类），所以看的是序列的最后一个字节
+            switch (seq[n - 1]) {
                 case 'A': return KEY_UP;
                 case 'B': return KEY_DOWN;
                 case 'C': return KEY_RIGHT;
                 case 'D': return KEY_LEFT;
-                default: return KEY_ESC;
+                default: return KEY_NONE;       // Home/End/鼠标序列等：忽略
             }
         }
-        return KEY_ESC;
+        return KEY_ESC;                         // 连按两下 Esc 之类
     }
-    if (c == '\n' || c == '\r') return KEY_ENTER;
-    if (c == 3) return KEY_ESC;  // Ctrl+C
+    if (c == '\r' || c == '\n') return KEY_ENTER;
+    if (c == 127 || c == 8) return KEY_BACKSPACE;
+    if (c == 9) return KEY_TAB;
+    if (c == 3) return KEY_ESC;      // Ctrl+C
+    if (c == 4) return KEY_ESC;      // Ctrl+D（输入结束）
     return c;
 }
 

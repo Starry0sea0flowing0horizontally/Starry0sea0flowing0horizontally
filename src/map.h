@@ -29,17 +29,28 @@ public:
     void loadDormNight();
     // 第二天清晨：白天宿舍重建（去掉深夜的压暗），玩家从床边醒来，床脚开着荼蘼。
     void loadDormMorning();
+    // 「浮梦」：四不相梦里那条路，四张连着走的图（序章 七 — 十）。
+    //   part 1 · 遇龙雪山（忆棠白花）  part 2 · 同游川（河底的回忆）
+    //   part 3 · 梦栖林（白色余影）    part 4 · 农家小院（屋门）
+    void loadDream(int part);
     // 「杂物房」地图：宿舍右墙那扇窄门后面的一间小屋。
     // 出口只有两个：来时的门（回宿舍）和右墙的「里间的门」（上锁，要铜钥匙）。
     void loadStoreroom();
     // 深夜宿舍专用：四不遇走后，床脚开出一朵荼蘼（往地形里补一格「花」）。
     void bloomFlower();
+    // 演出用：当场改一格的字符（灯挑亮 / 纸上添字 / 卷抄完）。
+    // 剧本里的 "tile" 一步就调它，改完不用还原——下一步再改回来即可。
+    void setCell(int x, int y, const std::string& glyph);
+    // 演出用：临时换掉地图顶上那行标题（同一张图要演不同场次时）
+    void setTitle(const std::string& t);
 
     // ---- 天庭回廊（seg = 1..4）----
     // 一条会拐弯的长回廊，切成四段：西廊 → 中廊（向南折）→ 东廊（S 形）→ 困兽府前。
     // 每段两头各开一个拱门，走上去（不用按回车）就切到相邻那段；
     // 两旁的墙上开着神仙府邸的门，要按回车才推得开；每段都立着一块「记事碑」（存档点）。
-    void loadCorridor(int seg);
+    // night=true 是「入夜以后」的版本：同一段回廊，灯点起来了，
+    // 困兽府前那一段的北墙上多开一扇「值守室」的门（白天没有这扇门）。
+    void loadCorridor(int seg, bool night = false);
     // 「走到就切图」的格子（回廊两头的拱门）。
     // 返回该格登记的地点名，不是这种格子返回 ""。
     std::string autoExitAt(int x, int y) const;
@@ -48,7 +59,14 @@ public:
     // 竹简文卷、油灯木柜，最里头是上司的桌（40×16，一大间）。
     // bossPresent=false 时不摆上司那一格：开场演出里上司是「走过来的地图角色」，
     // 他站在那儿会被画成两个人（桌后一个 + 走过来的一个）。
-    void loadOffice(bool bossPresent = true);
+    // clerksPresent=false 时不摆那八个伏案的同事：入夜以后人都走了，
+    // 他们是「站起来走出去的地图角色」，桌边再画八个「僚」就永远走不掉了。
+    void loadOffice(bool bossPresent = true, bool clerksPresent = true);
+
+    // 「值守室」：四不相值夜住的那间小屋（夜晚版，整屏压暗）。
+    // 一张床、一张桌案、一盏灯、窗纸上破着的三个洞、一扇通回廊的门，
+    // 还有一块「记事碑」（存档点）。夜里的戏就在这张图上跑。
+    void loadDutyRoom();
 
     // 已加载的地图 id / 显示标题（用于抬头与图例）
     const std::string& id() const;
@@ -118,6 +136,7 @@ private:
     int py_ = 0;                              // 玩家行坐标 y
     bool night_ = false;                      // 是否是「深夜」版本（整屏压暗）
     bool bossHere_ = true;                    // 文书阁：上司现在在不在桌后那个人
+    bool clerksHere_ = true;                  // 文书阁：那八个同事还在不在案边
 };
 
 }  // namespace game
