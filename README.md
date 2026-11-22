@@ -46,8 +46,8 @@ huazhitumi/
 
 | 平台 | 下载 |
 | --- | --- |
-| Windows 64 位（MSVC） | [huazhitumi-1.0.0-win64-msvc.zip](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.0/huazhitumi-1.0.0-win64-msvc.zip) |
-| Linux 64 位（GCC） | [huazhitumi-1.0.0-anylinux64-gcc.tar.gz](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.0/huazhitumi-1.0.0-anylinux64-gcc.tar.gz) |
+| Windows 64 位（MSVC） | [huazhitumi-1.0.1-win64-msvc.zip](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.1/huazhitumi-1.0.1-win64-msvc.zip) |
+| Linux 64 位（GCC） | [huazhitumi-1.0.1-anylinux64-gcc.tar.gz](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.1/huazhitumi-1.0.1-anylinux64-gcc.tar.gz) |
 
 下载后解压到任意目录，并从解压目录运行 `huazhitumi.exe`（Windows）或 `./huazhitumi`（Linux）。两份压缩包均包含运行所需的 `assets/` 资源；存档会在首次运行时于解压目录中创建。
 
@@ -87,7 +87,7 @@ cmake --build build
 cpack --config build/CPackConfig.cmake
 ```
 
-Windows 会生成 `huazhitumi-1.0.0-win64-msvc.zip`，Linux 会生成 `huazhitumi-1.0.0-anylinux64-gcc.tar.gz`。
+Windows 会生成 `huazhitumi-1.0.1-win64-msvc.zip`，Linux 会生成 `huazhitumi-1.0.1-anylinux64-gcc.tar.gz`。
 
 ---
 
