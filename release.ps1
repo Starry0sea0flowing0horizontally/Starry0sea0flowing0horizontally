@@ -59,7 +59,7 @@ Write-Host "`n[2/3] CMake 配置... / Configuring..." -ForegroundColor Yellow
 New-Item -ItemType Directory -Path $buildDir -Force | Out-Null
 Set-Location $buildDir
 
-cmake .. -G Ninja
+cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "CMake 配置失败，退出代码: $LASTEXITCODE" -ForegroundColor Red
