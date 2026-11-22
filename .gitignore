@@ -21,6 +21,7 @@
 *.ilk
 *.class
 *.zip
+*.tgz
 
 # Runtime save data
 /saves/

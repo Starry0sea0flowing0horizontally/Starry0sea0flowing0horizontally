@@ -236,13 +236,14 @@ void Game::playFromSave(int slot) {
     std::size_t pc = d.pc;
     // 优先按「label + 偏移」还原位置：剧情改过稿以后，旧存档的裸 pc 会指到别的段落里，
     // 一读档就多冒出一句不相干的台词（比如站在玉佩上却看到「地上积了一层灰尘」）。
-    if (!d.resumeLabel.empty()) {
+    if (!d.resumeLabel.empty() &&
+        script.labels.find(d.resumeLabel) != script.labels.end()) {
         // 存档时若停在某个地图里闲逛，锚点就是那张地图的 label（当前 pc 正好等于锚点）。
         // 此时偏移为 0，读档要直接回到那张地图，而不是把地图节点再跑一遍——
         // 重跑会先打一遍旁白，屏幕上就多出一句不相干的话。
         pc = resolveResume(script, d.resumeLabel, d.resumeOffset);
     } else {
-        // 旧版本存档（没有 resume 行）只有裸 pc。脚本改过稿以后，那个下标会落在
+        // 旧存档没有 resume 行或锚点已从脚本移除时，回退到 pc 最近的干净入口。
         // 半句旁白上（读档时屏幕上就多冒出一句不相干的话）。所以往回退到最近的
         // 段落边界（地图 / 清屏 / 场景标题）——那里一定是干净的入口。
         pc = snapToBoundary(script, pc);
@@ -1754,6 +1755,13 @@ Game::MenuAct Game::systemMenu(Script& script, std::size_t& pc, Flags& flags) {
                             initProfile(flags, false);
                             script = buildChapter(d.chapter);
                             pc = d.pc;
+                            if (!d.resumeLabel.empty() &&
+                                script.labels.find(d.resumeLabel) != script.labels.end()) {
+                                pc = resolveResume(script, d.resumeLabel, d.resumeOffset);
+                            } else {
+                                pc = snapToBoundary(script, pc);
+                            }
+                            if (pc >= script.nodes.size()) pc = 0;
                             skipSavePrompt(script, pc);
                             currentChapter_ = d.chapter;
                             currentScene_ = d.sceneTitle;

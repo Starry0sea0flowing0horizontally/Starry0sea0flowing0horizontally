@@ -301,10 +301,12 @@ bool extractTarGz(const std::string& compressed, std::string& contents) {
     return ok;
 }
 
-void parseSave(std::istream& f, SaveData& out) {
+bool parseSave(std::istream& f, SaveData& out) {
     out = SaveData();
     std::string line;
     bool first = true;
+    bool hasChapter = false;
+    bool hasPc = false;
     while (std::getline(f, line)) {
         if (first) { line = stripBom(line); first = false; }
         line = stripCr(line);
@@ -315,9 +317,13 @@ void parseSave(std::istream& f, SaveData& out) {
             // 版本号（当前仅占位，未来可用于迁移）
         } else if (line.compare(0, 8, "chapter ") == 0) {
             out.chapter = line.substr(8);
+            hasChapter = true;
         } else if (line.compare(0, 3, "pc ") == 0) {
             std::size_t v = 0;
-            if (parsePc(line.substr(3), v)) out.pc = v;
+            if (parsePc(line.substr(3), v)) {
+                out.pc = v;
+                hasPc = true;
+            }
         } else if (line.compare(0, 7, "resume ") == 0) {
             std::string v = line.substr(7);
             std::string::size_type sp = v.rfind(' ');
@@ -340,18 +346,14 @@ void parseSave(std::istream& f, SaveData& out) {
         }
         // 其它不认识的行直接丢掉——绝不能把它们当成「字段」再打印到界面上。
     }
+    return hasChapter && hasPc && !f.bad();
 }
 
-}  // namespace
-
-bool SaveManager::save(int slot, const SaveData& data) {
-    if (!ensureDir()) return false;
-
+bool writeSaveFile(const std::string& path, const SaveData& data) {
     std::ostringstream payload;
     payload << "version " << SAVE_FORMAT_VERSION << "\n";
     payload << "chapter " << sanitizeValue(data.chapter) << "\n";
     payload << "pc " << data.pc << "\n";
-    // 读档锚点：label 名 + 偏移（旧版本没有这行，读不到就退回裸 pc）
     if (!data.resumeLabel.empty()) {
         payload << "resume " << sanitizeValue(data.resumeLabel) << " "
                 << data.resumeOffset << "\n";
@@ -363,15 +365,24 @@ bool SaveManager::save(int slot, const SaveData& data) {
     }
 
     std::string compressed;
-    if (!createTarGz(payload.str(), compressed)) return false;
-    if (compressed.size() >
-        static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) return false;
+    if (!createTarGz(payload.str(), compressed) ||
+        compressed.size() >
+            static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max())) {
+        return false;
+    }
 
-    std::ofstream f(pathFor(slot).c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
+    std::ofstream f(path.c_str(), std::ios::out | std::ios::trunc | std::ios::binary);
     if (!f) return false;
     f.write(compressed.data(), static_cast<std::streamsize>(compressed.size()));
     f.close();
-    if (!f) return false;
+    return static_cast<bool>(f);
+}
+
+}  // namespace
+
+bool SaveManager::save(int slot, const SaveData& data) {
+    if (!ensureDir()) return false;
+    if (!writeSaveFile(pathFor(slot), data)) return false;
 
     // 记录最近存档槽，供「继续游戏」使用
     std::ofstream lf((dir_ + "/last.txt").c_str(), std::ios::out | std::ios::trunc);
@@ -386,18 +397,22 @@ bool SaveManager::load(int slot, SaveData& out) const {
     std::string fileData((std::istreambuf_iterator<char>(f)), std::istreambuf_iterator<char>());
     if (f.bad()) return false;
 
+    const bool legacyPlaintext =
+        fileData.size() < 2 ||
+        static_cast<unsigned char>(fileData[0]) != 0x1F ||
+        static_cast<unsigned char>(fileData[1]) != 0x8B;
     std::string contents;
-    if (fileData.size() >= 2 &&
-        static_cast<unsigned char>(fileData[0]) == 0x1F &&
-        static_cast<unsigned char>(fileData[1]) == 0x8B) {
+    if (!legacyPlaintext) {
         if (!extractTarGz(fileData, contents)) return false;
     } else {
-        // 兼容升级前的纯文本存档；下一次保存时会自动转换成 tar.gz。
         contents.swap(fileData);
     }
 
     std::istringstream parsed(contents);
-    parseSave(parsed, out);
+    SaveData loaded;
+    if (!parseSave(parsed, loaded)) return false;
+    if (legacyPlaintext && !writeSaveFile(pathFor(slot), loaded)) return false;
+    out = loaded;
     return true;
 }
 

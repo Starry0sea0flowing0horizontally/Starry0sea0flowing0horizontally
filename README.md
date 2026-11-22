@@ -19,18 +19,18 @@
 huazhitumi/
 ├── CMakeLists.txt          # CMake 构建（通用）
 ├── README.md
+├── include/                # C++头文件
 ├── src/
 │   ├── main.cpp            # 程序入口
 │   ├── config.h            # 颜色、常量、角色配色（全局配置）
-│   ├── input.h/.cpp        # 跨平台按键输入（Windows conio / POSIX termios）
-│   ├── renderer.h/.cpp     # 文本演出（打字机/颜色/居中/清屏）+ 配图接口
+│   ├── input.cpp        # 跨平台按键输入（Windows conio / POSIX termios）
+│   ├── renderer.cpp     # 文本演出（打字机/颜色/居中/清屏）+ 配图接口
 │   ├── script.h            # 剧情脚本数据模型 + 流式构建器
-│   ├── map.h/.cpp          # 可走动探索地图（终端字符俯视图）
-│   ├── save.h/.cpp         # 多槽存档系统（纯文本格式）
-│   ├── game.h/.cpp         # 主循环、标题菜单、存档菜单、剧情状态机
-│   ├── status.h/.cpp       # 角色档案、属性、背包与物品数据
-│   ├── prologue.h/.cpp     # 序章「咫尺天涯」完整剧情脚本
-│   ├── cover_art.h         # 开场字符画数据（tools/cover_art.py 自动生成）
+│   ├── map.cpp          # 可走动探索地图（终端字符俯视图）
+│   ├── save.cpp         # 多槽存档系统（纯文本格式）
+│   ├── game.cpp         # 主循环、标题菜单、存档菜单、剧情状态机
+│   ├── status.cpp       # 角色档案、属性、背包与物品数据
+│   ├── prologue.cpp     # 序章「咫尺天涯」完整剧情脚本
 ├── tools/                  # 配图制作脚本（转字符画，不参与编译）
 ├── assets/images/          # 配图资源（开场原图 + 字符画预览）
 └── saves/                  # 存档目录（运行时自动生成）
@@ -46,8 +46,8 @@ huazhitumi/
 
 | 平台 | 下载 |
 | --- | --- |
-| Windows 64 位（MSVC） | [huazhitumi-1.0.1-win64-msvc.zip](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.1/huazhitumi-1.0.1-win64-msvc.zip) |
-| Linux 64 位（GCC） | [huazhitumi-1.0.1-anylinux64-gcc.tar.gz](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.1/huazhitumi-1.0.1-anylinux64-gcc.tar.gz) |
+| Windows 64 位（MSVC） | [huazhitumi-1.0.2-win64-msvc.zip](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.2/huazhitumi-1.0.2-win64-msvc.zip) |
+| Linux 64 位（GCC） | [huazhitumi-1.0.2-anylinux64-gcc.tar.gz](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.2/huazhitumi-1.0.2-anylinux64-gcc.tgz) |
 
 下载后解压到任意目录，并从解压目录运行 `huazhitumi.exe`（Windows）或 `./huazhitumi`（Linux）。两份压缩包均包含运行所需的 `assets/` 资源；存档会在首次运行时于解压目录中创建。
 
@@ -89,7 +89,7 @@ cmake --build build
 cpack --config build/CPackConfig.cmake
 ```
 
-Windows 会生成 `huazhitumi-1.0.1-win64-msvc.zip`，Linux 会生成 `huazhitumi-1.0.1-anylinux64-gcc.tar.gz`。
+Windows 会生成 `huazhitumi-1.0.2-win64-msvc.zip`，Linux 会生成 `huazhitumi-1.0.2-anylinux64-gcc.tar.gz`。
 
 ---
 

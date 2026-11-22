@@ -101,13 +101,26 @@ int main() {
 
     {
         std::ofstream legacy(saves.pathFor(1).c_str(), std::ios::out | std::ios::binary);
-        legacy << "version 1\nchapter legacy\npc 9\nscene old scene\n"
+        legacy << "version 1\nchapter legacy\npc 9\nresume office_cabinet 1\nscene old scene\n"
                   "timestamp 2025-01-02 03:04:05\nflag old=yes\n";
     }
     if (!check(saves.load(1, loaded) &&
                loaded.chapter == "legacy" && loaded.pc == 9 &&
+               loaded.resumeLabel == "office_cabinet" && loaded.resumeOffset == 1 &&
                loaded.sceneTitle == "old scene" && loaded.flags["old"] == "yes",
                "legacy plaintext save is not readable")) return 1;
+    std::ifstream convertedFile(saves.pathFor(1).c_str(), std::ios::in | std::ios::binary);
+    std::string converted((std::istreambuf_iterator<char>(convertedFile)),
+                          std::istreambuf_iterator<char>());
+    if (!check(converted.size() >= 2 &&
+               static_cast<unsigned char>(converted[0]) == 0x1F &&
+               static_cast<unsigned char>(converted[1]) == 0x8B &&
+               validArchive(converted),
+               "legacy plaintext save was not converted in place")) return 1;
+    std::ifstream latestFile((dir / "last.txt").string().c_str());
+    std::string latestSlot;
+    latestFile >> latestSlot;
+    if (!check(latestSlot == "0", "migration changed the latest-save slot")) return 1;
 
     {
         std::ofstream corrupt(saves.pathFor(2).c_str(), std::ios::out | std::ios::binary);
