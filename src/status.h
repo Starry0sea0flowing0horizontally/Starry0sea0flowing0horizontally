@@ -157,6 +157,8 @@ int count(const Flags& f, const std::string& name);         // 0 表示没有
 bool add(Flags& f, const std::string& name, int n = 1);
 std::vector<std::pair<std::string, int>> all(const Flags& f);   // {名字, 数量}
 std::size_t total(const Flags& f);                             // 种类数
+// 新局开场：擦掉上一局的道具键，返回开场持有物（保证物品栏不串档）
+std::vector<std::string> freshDefaults(Flags& f);
 }  // namespace inventory
 
 }  // namespace game

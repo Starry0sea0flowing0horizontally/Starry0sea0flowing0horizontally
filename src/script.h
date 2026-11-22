@@ -218,7 +218,8 @@ public:
     // exits 是玩家的出口表，actors 是各路 NPC 的出场位置 + 行动脚本。
     ScriptBuilder& mapWithActors(const std::string& mapId, int startX, int startY,
                                  std::vector<MapExit> exits,
-                                 std::vector<MapActor> actors) {
+                                 std::vector<MapActor> actors,
+                                 const std::string& title = std::string()) {
         Node n;
         n.type = NodeType::Map;
         n.mapId = mapId;
@@ -226,6 +227,7 @@ public:
         n.mapStartY = startY;
         n.mapExits = std::move(exits);
         n.mapActors = std::move(actors);
+        n.text = title;            // 非空就顶掉地图自己的标题（「六 · 深夜，值守室」）
         script.nodes.push_back(std::move(n));
         return *this;
     }
@@ -269,6 +271,16 @@ public:
         s.speaker = speaker;
         s.text = text;
         if (color) s.color = color;
+        return s;
+    }
+    // 当场改一格地形（演出用：灯挑亮 / 纸上添字 / 文卷抄完）
+    static MapActorStep actTile(int x, int y, const std::string& glyph, int ms = 220) {
+        MapActorStep s;
+        s.kind = "tile";
+        s.x = x;
+        s.y = y;
+        s.text = glyph;
+        s.ms = ms;
         return s;
     }
     static MapActorStep actDisappear() {

@@ -249,7 +249,7 @@ void Map::loadDorm() {
     locAt_[std::make_pair(32, H - 1)] = "杂物间的门";   // 下墙偏右
 
     id_ = "dorm";
-    title_ = "宿舍";
+    title_ = "序章 · 宿舍";
     night_ = false;
 }
 
@@ -264,7 +264,7 @@ void Map::loadDormNight() {
     const bool had = (id_ == "dorm");
     id_.clear();          // 强制重建（白天那份可能是带图例的老版本）
     loadDorm();
-    title_ = "宿舍 · 深夜";
+    title_ = "一 · 深夜，宿舍";
     night_ = true;
     if (had) {            // 站的位置沿用，不把人从床边拉走
         if (isWalkable(keepX, keepY)) { px_ = keepX; py_ = keepY; }
@@ -279,7 +279,7 @@ void Map::loadDormNight() {
 void Map::loadDormMorning() {
     id_.clear();          // 强制重建：刚跑完深夜，id_ 还停在 "dorm"
     loadDorm();
-    title_ = "宿舍 · 清晨";
+    title_ = "二 · 清晨，宿舍";
     night_ = false;
     // 从床上起来：站到床沿外那一格（床占 x 2~4 / y 2~5）。
     int sx = 6, sy = 5;
@@ -383,7 +383,181 @@ void Map::loadStoreroom() {
     locAt_[std::make_pair(31, 6)] = "里间的门";
 
     id_ = "storeroom";
-    title_ = "杂物房";
+    title_ = "序章 · 杂物房";
+    night_ = false;
+}
+
+// ============================================================================
+//  「浮梦」—— 四不相梦里那条路，四张连着走的图（序章 七 — 十）
+//    1 · 遇龙雪山 —— 天光把黄昏和黎明揉在一起，雪里开着忆棠（白花）
+//    2 · 同游川   —— 雪原下头横着一条河，河底流着孟极和麒麟的回忆
+//    3 · 梦栖林   —— 林子深处一条小径，尽头站着一道白色的余影（孟极烬光）
+//    4 · 农家小院 —— 小径尽头一道矮篱、一间屋，窗里透着暖黄的光
+//  做法和回廊一样：先整片铺「雪」，再用挡路的字（山 / 棠 / 林 / 川 / 屋）
+//  围出能走的「径」——路一定是径，其余全是景物。四张图都从最下面那条径进。
+// ============================================================================
+void Map::loadDream(int part) {
+    if (part < 1) part = 1;
+    if (part > 4) part = 4;
+    const std::string wantId = "dream" + std::to_string(part);
+    if (id_ == wantId) return;          // 同一张图不重建：守住玩家站位
+
+    int W = 40;
+    int H = 15;
+
+    std::vector<std::vector<std::string>> g;
+
+    auto put = [&](int x, int y, const std::string& c) {
+        if (x >= 0 && x < W && y >= 0 && y < H)
+            g[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] = c;
+    };
+    auto vline = [&](int x, int y0, int y1, const std::string& c) {
+        for (int y = y0; y <= y1; ++y) put(x, y, c);
+    };
+    auto hline = [&](int y, int x0, int x1, const std::string& c) {
+        for (int x = x0; x <= x1; ++x) put(x, y, c);
+    };
+    // 四边一律是山壁（挡路）；人从最下面那条径上进来。
+    auto reset = [&](int w, int h, const std::string& fill) {
+        W = w;
+        H = h;
+        g.assign(static_cast<std::size_t>(h),
+                 std::vector<std::string>(static_cast<std::size_t>(w), fill));
+        hline(0, 0, W - 1, "山");
+        hline(H - 1, 0, W - 1, "山");
+        vline(0, 0, H - 1, "山");
+        vline(W - 1, 0, H - 1, "山");
+    };
+
+    doorCells_.clear();
+    locByCell_.clear();
+    locAt_.clear();
+
+    if (part == 1) {
+        // ---- 遇龙雪山：山压着雪，雪径在山脚下一段一段往上绕 ----
+        reset(40, 15, "雪");
+        // 北面一整道山脊，只在 (24,1) 留一个山口出去
+        hline(1, 1, 38, "山");
+        put(24, 1, "径");                       // 山口：山壁上唯一的缺口
+        // 左右两片山体（山本来就该多）
+        for (int y = 2; y <= 4; ++y) hline(y, 1, 12, "山");
+        for (int y = 2; y <= 3; ++y) hline(y, 29, 38, "山");
+        for (int y = 4; y <= 6; ++y) { put(1, y, "山"); put(2, y, "山"); put(3, y, "山"); }
+        for (int y = 4; y <= 7; ++y) { put(36, y, "山"); put(37, y, "山"); put(38, y, "山"); }
+        for (int y = 7; y <= 9; ++y) { put(4, y, "山"); put(5, y, "山"); }
+        for (int y = 6; y <= 8; ++y) { put(34, y, "山"); put(35, y, "山"); }
+        // 南坡的乱石与矮山
+        hline(11, 2, 8, "山");
+        hline(12, 2, 6, "山");
+        hline(11, 31, 37, "山");
+        hline(12, 33, 37, "山");
+        // 雪径：脚下往上四步 → 往西六步 → 再往上四步 → 往东十步 → 进山口
+        vline(20, 9, 13, "径");
+        hline(9, 14, 20, "径");
+        vline(14, 5, 9, "径");
+        hline(5, 14, 24, "径");
+        vline(24, 2, 5, "径");
+        // 忆棠：只在梦里开花的树，白花
+        put(11, 10, "棠"); put(12, 10, "棠"); put(12, 11, "棠");
+        put(28, 10, "棠"); put(29, 10, "棠"); put(29, 11, "棠");
+        put(6, 6, "棠");   put(7, 6, "棠");   put(7, 7, "棠");
+        put(33, 6, "棠");  put(32, 7, "棠");
+        put(17, 7, "棠");  put(22, 7, "棠");
+        put(13, 3, "棠");  put(29, 4, "棠");
+        locByCell_["棠"] = "忆棠";
+        locAt_[std::make_pair(24, 1)] = "山径";
+        // 记事碑：浮梦的第一块存档点，就在雪径起步的地方
+        put(22, 12, "碑");
+        locAt_[std::make_pair(22, 12)] = "记事碑";
+        title_ = "七 · 浮梦，遇龙雪山";
+    } else if (part == 2) {
+        // ---- 同游川：横着流过雪山脚下的一条河，中间一处浅滩能蹚过去 ----
+        reset(40, 15, "雪");
+        // 北面山脊，只在 (30,1) 留一个川口
+        hline(1, 1, 38, "山");
+        put(30, 1, "径");
+        for (int y = 2; y <= 4; ++y) hline(y, 1, 9, "山");
+        for (int y = 2; y <= 3; ++y) hline(y, 33, 38, "山");
+        for (int y = 7; y <= 10; ++y) { put(2, y, "山"); put(3, y, "山"); }
+        for (int y = 9; y <= 12; ++y) { put(36, y, "山"); put(37, y, "山"); }
+        hline(12, 3, 9, "山");
+        hline(13, 3, 6, "山");
+        // 河：横贯整张图，只有 x=30 那两格是浅滩
+        for (int x = 1; x < 39; ++x) { put(x, 5, "川"); put(x, 6, "川"); }
+        // 川径：脚下往北，绕到东边，蹚过浅滩，再一直走到川口
+        vline(20, 8, 13, "径");
+        hline(7, 20, 30, "径");
+        vline(30, 4, 7, "径");
+        put(30, 5, "径"); put(30, 6, "径");      // 浅滩
+        put(30, 2, "径"); put(30, 3, "径");
+        put(13, 9, "棠"); put(14, 9, "棠"); put(14, 10, "棠");
+        put(26, 10, "棠"); put(27, 10, "棠");
+        put(7, 7, "棠");  put(8, 7, "棠");
+        put(34, 7, "棠"); put(35, 7, "棠");
+        put(22, 11, "棠"); put(23, 11, "棠");
+        locByCell_["川"] = "同游川";
+        locByCell_["棠"] = "忆棠";
+        locAt_[std::make_pair(30, 5)] = "浅滩";
+        locAt_[std::make_pair(30, 1)] = "川径";
+        // 记事碑：同游川的存档点，立在南岸的河滩上
+        put(18, 11, "碑");
+        locAt_[std::make_pair(18, 11)] = "记事碑";
+        title_ = "八 · 同游川";
+    } else if (part == 3) {
+        // ---- 梦栖林：整片都是林子，只有一条小径能走 ----
+        reset(40, 13, "林");
+        vline(20, 8, 11, "径");
+        hline(8, 12, 20, "径");
+        vline(12, 5, 8, "径");
+        hline(5, 12, 27, "径");
+        vline(27, 2, 5, "径");
+        hline(2, 20, 27, "径");
+        put(20, 1, "径");
+        locAt_[std::make_pair(20, 1)] = "林径";
+        // 记事碑：梦栖林的存档点，就立在小径拐角上（径还是通的）
+        put(20, 10, "碑");
+        locAt_[std::make_pair(20, 10)] = "记事碑";
+        title_ = "九 · 梦栖林";
+    } else {
+        // ---- 农家小院：矮篱、三间屋、一口井、一张石桌 ----
+        reset(40, 13, "雪");
+        vline(20, 4, 11, "径");
+        hline(1, 12, 28, "屋");
+        hline(2, 12, 28, "屋");
+        hline(3, 12, 28, "屋");
+        put(20, 3, "径");                        // 门口：门格（画面上写成「门」）
+        doorCells_.push_back(std::make_pair(20, 3));
+        // 院墙（左右两截矮篱）
+        vline(6, 8, 11, "墙");
+        vline(33, 8, 11, "墙");
+        // 井台 / 石桌 / 院里的树
+        put(10, 8, "井");
+        put(26, 9, "石"); put(27, 9, "石");
+        put(7, 5, "树"); put(32, 6, "树");
+        put(14, 9, "箱"); put(25, 6, "架");
+        locByCell_["井"] = "井";
+        locByCell_["石"] = "石桌";
+        locByCell_["树"] = "院里的树";
+        locByCell_["箱"] = "柴堆";
+        locByCell_["架"] = "晾架";
+        locAt_[std::make_pair(20, 3)] = "屋门";
+        // 记事碑：农家小院的存档点，靠着院门
+        put(17, 10, "碑");
+        locAt_[std::make_pair(17, 10)] = "记事碑";
+        title_ = "十 · 农家小院";
+    }
+
+    tiles_ = g;
+
+    // 四张图都从最下面那条径上进
+    px_ = 20;
+    py_ = H - 2;
+    if (!isWalkable(px_, py_)) {
+        px_ = 20;
+        py_ = H - 3;
+    }
+
+    id_ = wantId;
     night_ = false;
 }
 
@@ -402,11 +576,13 @@ void Map::loadStoreroom() {
 //    · 两旁的墙上有神仙府邸的门（紫）：按回车才推得开；
 //    · 一块「记事碑」（金）：站在上面按回车就能存档。
 // ============================================================================
-void Map::loadCorridor(int seg) {
+void Map::loadCorridor(int seg, bool night) {
     if (seg < 1) seg = 1;
     if (seg > 4) seg = 4;
     const std::string wantId = "corridor" + std::to_string(seg);
-    if (id_ == wantId) return;          // 同一段：不重建（保住玩家站位）
+    // 同一段、同一种天色：不重建（保住玩家站位）。
+    // 白天 / 入夜是两张图（入夜以后困兽府前多出「值守室」那扇门），天色变了就得重建。
+    if (id_ == wantId && night_ == night) return;
 
     const int W = 40;
     const int H = (seg == 4) ? 12 : 13;
@@ -478,7 +654,7 @@ void Map::loadCorridor(int seg) {
     };
 
     if (seg == 1) {
-        title_ = "三 · 天庭回廊 · 西廊";
+        title_ = "三 · 天庭回廊，西廊";
         carve(1, 1, 38, 11);
         // 两排廊柱，把这一段分成「中殿 + 东西两条侧廊」
         for (int y = 2; y <= 10; y += 2) {
@@ -505,7 +681,7 @@ void Map::loadCorridor(int seg) {
         arch(39, 5, "回廊东口");
         arch(33, 0, "回廊北口");
     } else if (seg == 2) {
-        title_ = "回廊 · 中廊";
+        title_ = "三 · 天庭回廊，中廊";
         carve(1, 1, 38, 5);       // 东西向的主廊
         carve(26, 5, 38, 11);     // 东头向南折下去的一条
         carve(8, 6, 25, 11);      // 折下来再向西摊开的大院
@@ -529,7 +705,7 @@ void Map::loadCorridor(int seg) {
         arch(8, 12, "回廊南口");
         arch(39, 2, "回廊东门");
     } else if (seg == 3) {
-        title_ = "回廊 · 东廊";
+        title_ = "三 · 天庭回廊，东廊";
         carve(1, 1, 22, 5);       // 上段：向东
         carve(18, 5, 22, 9);      // 中段：折向南
         carve(18, 9, 38, 11);     // 下段：再折回向东
@@ -553,7 +729,7 @@ void Map::loadCorridor(int seg) {
         arch(20, 12, "回廊南口");
         arch(39, 10, "回廊东口");
     } else {
-        title_ = "回廊 · 困兽府前";
+        title_ = night ? "三 · 困兽府前（夜）" : "三 · 困兽府前";
         carve(1, 1, 38, 4);       // 主廊
         carve(24, 4, 38, 10);     // 尽头摊开的广场
         decoRect(6, 1, 8, 1, "坛");
@@ -565,6 +741,9 @@ void Map::loadCorridor(int seg) {
         deco(32, 8, "鼎");
         door(10, 0, "文书阁");
         door(39, 6, "困兽府");
+        // 入夜以后，北墙上多开一扇小门：值守室从这儿进去。
+        // 白天这扇门是不开的——白天他只在文书阁和回廊里跑。
+        if (night) door(4, 0, "值守室");
         win(20, 0);
         save(5, 2);
         arch(0, 2, "回廊西口");
@@ -574,7 +753,7 @@ void Map::loadCorridor(int seg) {
 
     tiles_ = g;
     id_ = wantId;
-    night_ = false;
+    night_ = night;
 
     // 站位：从别的回廊走回来就留在原地；否则回到西头（脚本里会显式给坐标）
     if (prevCorridor && isWalkable(keepX, keepY)) {
@@ -607,8 +786,8 @@ std::string Map::autoExitAt(int x, int y) const {
 //  出口表压在 9 项以内（数字键 1~9 才够用）：笔 / 墨 / 纸 一律叫「笔墨」，
 //  竹简 / 文卷 一律叫「案卷」，凳子只是家具、不登记地点。
 // ============================================================================
-void Map::loadOffice(bool bossPresent) {
-    if (id_ == "office" && bossHere_ == bossPresent) return;
+void Map::loadOffice(bool bossPresent, bool clerksPresent) {
+    if (id_ == "office" && bossHere_ == bossPresent && clerksHere_ == clerksPresent) return;
 
     const int W = 40;
     const int H = 16;
@@ -643,7 +822,7 @@ void Map::loadOffice(bool bossPresent) {
     auto ink = [&](int x, int y, const char* c) { prop(x, y, c, "笔墨"); };
     auto paper = [&](int x, int y, const char* c) { prop(x, y, c, "案卷"); };
     auto lamp = [&](int x, int y) { prop(x, y, "灯", "油灯"); };
-    auto cabinet = [&](int x, int y) { prop(x, y, "柜", "木柜"); };
+    auto cabinet = [&](int x, int y) { put(x, y, "柜"); };   // 只是家具，不登记地点
     auto clerk = [&](int x, int y) { prop(x, y, "僚", "同事"); };
     // 一张「有人用」的桌案：桌、椅、纸、墨、伏案的人
     auto workstation = [&](int x, int y, bool used) {
@@ -668,21 +847,26 @@ void Map::loadOffice(bool bossPresent) {
     paper(32, 1, "卷");
 
     // ---- 第一排桌案：四个同事，一人一案 ----
-    workstation(5, 3, true);
-    workstation(11, 3, true);
-    workstation(17, 3, true);
-    workstation(23, 3, true);
-    // 四不相自己的桌子（他进门之前，这儿一直空着）
-    desk(29, 3);   desk(30, 3);
+    workstation(5, 3, clerksPresent);
+    workstation(11, 3, clerksPresent);
+    workstation(17, 3, clerksPresent);
+    workstation(23, 3, clerksPresent);
+    // ---- 四不相自己的座位 ----
+    // 一屋子几十张案子，只有他这一张是「案」、还描金；凳子是「席」。
+    // 一眼就能认出「他坐哪儿」，不会混在同事那一排桌子里。
+    prop(29, 3, "案", "座位");
+    prop(30, 3, "案", "座位");
+    put(29, 4, "席");                       // 他坐的那张凳子
+    locAt_[std::make_pair(29, 4)] = "座位";
+    chair(30, 4);
     ink(31, 3, "笔");
     paper(31, 4, "纸");
-    chair(29, 4);  chair(30, 4);
 
     // ---- 第二排桌案：又是四个同事 ----
-    workstation(5, 8, true);
-    workstation(11, 8, true);
-    workstation(17, 8, true);
-    workstation(23, 8, true);
+    workstation(5, 8, clerksPresent);
+    workstation(11, 8, clerksPresent);
+    workstation(17, 8, clerksPresent);
+    workstation(23, 8, clerksPresent);
 
     // ---- 靠下墙的一排家什 ----
     cabinet(2, 12);
@@ -692,6 +876,9 @@ void Map::loadOffice(bool bossPresent) {
     lamp(20, 12);
     lamp(26, 12);
     paper(33, 12, "简");
+
+    // ---- 记事碑：文书阁的存档点（金色，站在上面按回车存档）----
+    prop(6, 13, "碑", "记事碑");
 
     // ---- 最里头：上司的桌案 ----
     if (bossPresent) prop(34, 2, "司", "上司");
@@ -703,11 +890,96 @@ void Map::loadOffice(bool bossPresent) {
 
     tiles_ = g;
     id_ = "office";
-    title_ = "四 · 文书阁";
+    // 入夜以后上司和同事都走了，只剩一盏灯：图名也带上「夜」，
+    // 免得白天、夜里两次存档在存档槽里长得一模一样。
+    title_ = (bossPresent || clerksPresent) ? "四 · 文书阁" : "四 · 文书阁（夜）";
     night_ = false;
     bossHere_ = bossPresent;
+    clerksHere_ = clerksPresent;
     px_ = 4;
     py_ = 13;
+}
+
+// ============================================================================
+//  「值守室」：四不相值夜时住的那间小屋（夜晚版）
+//  白天在文书阁抄文书，天黑了自己一路走回这里。屋里很空，也很冷：
+//    · 左上角一张床（枕 / 被 各一格），床边一撮旧棉絮；
+//    · 中间一张旧木桌，桌上摊着昨天没抄完的文卷，桌角一盏油灯；
+//    · 靠墙一排木柜；上墙三处窗纸破了洞，夜里就靠它们漏风；
+//    · 左下角一块「记事碑」（金色，存档点）；
+//    · 下墙偏左一扇门（可走上去），门外就是回廊。
+//  整张图是「夜里」的版本，画面上整屏压暗。
+// ============================================================================
+void Map::loadDutyRoom() {
+    if (id_ == "dutyroom") return;
+
+    const int W = 40;
+    const int H = 13;
+    const std::string S = "\xE3\x80\x80";
+    const std::string WALL = "\xE5\xA2\x99";
+    std::vector<std::vector<std::string> > g(
+        static_cast<std::size_t>(H),
+        std::vector<std::string>(static_cast<std::size_t>(W), WALL));
+    for (int y = 1; y <= H - 2; ++y)
+        for (int x = 1; x <= W - 2; ++x) g[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] = S;
+
+    auto put = [&](int x, int y, const std::string& c) {
+        if (x < 0 || x >= W || y < 0 || y >= H) return;
+        g[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] = c;
+    };
+    locByCell_.clear();
+    locAt_.clear();
+    doorCells_.clear();
+    autoAt_.clear();
+    // 能按回车的东西：格子字 + 地点名
+    auto prop = [&](int x, int y, const std::string& c, const std::string& name) {
+        put(x, y, c);
+        locAt_[std::make_pair(x, y)] = name;
+    };
+
+    // ---- 门：下墙偏左，能走上去 ----
+    put(3, H - 1, S);
+    doorCells_.push_back(std::make_pair(3, H - 1));
+    locAt_[std::make_pair(3, H - 1)] = "门";
+
+    // ---- 上墙的三个破窗洞 ----
+    prop(12, 0, "窗", "窗");
+    prop(22, 0, "窗", "窗");
+    prop(30, 0, "窗", "窗");
+
+    // ---- 床（左上角，3 列 × 4 行）----
+    put(2, 2, "床"); put(3, 2, "床"); put(4, 2, "床");
+    put(2, 3, "枕"); put(3, 3, "被"); put(4, 3, "床");
+    put(2, 4, "床"); put(3, 4, "床"); put(4, 4, "床");
+    prop(2, 5, "床", "床");        // 床边那一格：站上去按回车就是「睡下」
+    put(3, 5, "床"); put(4, 5, "床");
+    prop(6, 4, "絮", "棉絮");
+
+    // ---- 桌案：旧木桌 + 凳子 + 油灯 + 昨天没抄完的文卷 ----
+    prop(14, 3, "桌", "桌子"); prop(15, 3, "桌", "桌子");
+    put(13, 3, "椅");
+    prop(16, 2, "灯", "油灯");
+    prop(16, 3, "卷", "案卷");
+    prop(17, 3, "简", "案卷");
+    prop(16, 4, "墨", "笔墨");
+
+    // ---- 靠墙一排木柜 ----
+    put(33, 2, "柜"); put(34, 2, "柜"); put(35, 2, "柜");
+    put(33, 3, "柜"); put(34, 3, "柜"); put(35, 3, "柜");
+
+    // ---- 记事碑：值守室的存档点（左下角，进门就看得见）----
+    prop(6, 10, "碑", "记事碑");
+
+    // ---- 地上的旧痕：掉下来的墙皮、墙角一撮灰 ----
+    put(26, 9, "破"); put(21, 11, "尘");
+
+    tiles_ = g;
+    id_ = "dutyroom";
+    title_ = "五 · 夜晚，值守室";
+    night_ = true;
+    bossHere_ = true;
+    px_ = 4;
+    py_ = H - 3;
 }
 
 // ============================================================================
@@ -726,6 +998,15 @@ void Map::bloomFlower() {
     tiles_[static_cast<std::size_t>(fy)][static_cast<std::size_t>(fx)] = "花";
     locByCell_["花"] = "荼蘼花";
     locAt_[std::make_pair(fx, fy)] = "荼蘼花";
+}
+
+void Map::setTitle(const std::string& t) {
+    if (!t.empty()) title_ = t;
+}
+
+void Map::setCell(int x, int y, const std::string& glyph) {
+    if (!inBounds(x, y)) return;
+    tiles_[static_cast<std::size_t>(y)][static_cast<std::size_t>(x)] = glyph;
 }
 
 std::string Map::locAt(int x, int y) const {
@@ -759,6 +1040,8 @@ static bool isWallCell(const std::string& cell) {
            cell == "坛" || cell == "树" || cell == "池" ||   // 花坛 / 树 / 池水
            cell == "渠" || cell == "阶" || cell == "台" ||   // 水渠 / 石阶 / 高台
            cell == "鼎" || cell == "屏" ||                   // 铜鼎 / 屏风
+           cell == "山" || cell == "棠" || cell == "林" ||   // 浮梦：山壁 / 忆棠 / 梦栖林
+           cell == "川" || cell == "屋" || cell == "井" ||   // 同游川 / 屋 / 井台
            cell == "僚" || cell == "司";                     // 同事 / 上司：人也是挡路的
 }
 
@@ -963,6 +1246,10 @@ void Map::renderWith(Renderer& r, const std::string& highlightLoc,
                     c = color::PURPLE;   // 上司：深色官袍
                 } else if (cell == "碑") {
                     c = color::GOLD;     // 记事碑：存档点，隔着一整条回廊也看得见
+                } else if (cell == "案") {
+                    c = color::GOLD;     // 四不相自己的案子：一屋子只有它描金
+                } else if (cell == "席") {
+                    c = color::AMBER;    // 他自己的座位
                 } else if (cell == "坛" || cell == "树") {
                     c = color::GREEN;    // 花坛 / 树
                 } else if (cell == "池" || cell == "渠") {
@@ -971,6 +1258,22 @@ void Map::renderWith(Renderer& r, const std::string& highlightLoc,
                     c = color::AMBER;    // 铜鼎
                 } else if (cell == "屏") {
                     c = color::PURPLE;   // 屏风
+                } else if (cell == "雪") {
+                    c = color::SILVER;   // 浮梦：雪地
+                } else if (cell == "棠") {
+                    c = color::WHITE;    // 忆棠：梦里开的白花
+                } else if (cell == "川") {
+                    c = color::CYAN;     // 同游川
+                } else if (cell == "径") {
+                    c = color::GOLD;     // 小径
+                } else if (cell == "光") {
+                    c = color::GOLD;     // 落在地上的一小块天光
+                } else if (cell == "林") {
+                    c = color::GREEN;    // 梦栖林
+                } else if (cell == "山" || cell == "屋") {
+                    c = color::GRAY;     // 山壁 / 屋顶压着雪
+                } else if (cell == "井" || cell == "石") {
+                    c = color::TEAL;     // 井台 / 石桌
                 } else if (isWallCell(cell)) {
                     c = color::GRAY;   // 满屏「墙」字，用暗灰避免喧宾夺主
                 } else if (cell == "门") {

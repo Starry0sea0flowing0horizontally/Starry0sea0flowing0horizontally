@@ -69,6 +69,10 @@ int displayWidth(const std::string& s) {
             else if (cp >= 0x2580u && cp <= 0x259Fu) w += 1;
             // Miscellaneous Symbols 里的常见符号（⚠★☆◇◆▶◀）也按半角算。
             else if (cp == 0x26A0u) w += 1;
+            // 「·」（U+00B7 拉丁中点，章节名里的分隔点）是窄字符，只占 1 列。
+            // 它虽然是双字节 UTF-8，但按 2 列算的话，存档槽那两列摘要
+            // 只要有一条带「·」，那一行就会挤宽 1 列，右边框跟着歪一格。
+            else if (cp == 0x00B7u) w += 1;
             else w += 2;
         } else {
             w += 1;

@@ -29,6 +29,10 @@ void init();
 // 恢复终端原有模式（程序退出前必须调用）
 void restore();
 
+// 崩溃 / 被信号杀死时也能还原终端（POSIX 有效，Windows 等价于 restore）。
+// 只做 tcsetattr 这类异步信号安全的事，可以直接在信号处理函数里调用。
+void emergencyRestore();
+
 // 非阻塞检测：当前是否有按键待读（不消费输入）
 bool kbhit();
 

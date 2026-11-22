@@ -110,13 +110,14 @@ ItemInfo itemMark(const std::string& name) {
     return info;
 }
 
-// 开场就带在身上的重要物品（全部按「未装备的候选」登记进背包和装备槽）
+// 开场就带在身上的重要物品。
+// 只放「一开局就在袖子里」的东西：双螭玉佩是宿舍里那枚存档用的玉佩，
+// 灰色绒毛是翻灰尘才捡到的——两样都不能算开场持有，否则新开一局物品栏里
+// 会冒出上一局才拿到的东西。
 std::vector<std::string> defaultWarehouse() {
     std::vector<std::string> v;
     v.push_back("公文一摞");
     v.push_back("未抄完的文卷");
-    v.push_back("双螭玉佩");
-    v.push_back("一团灰色的绒毛");
     return v;
 }
 
@@ -300,7 +301,7 @@ Roster::Roster() {
     Character sy;
     sy.configure("sibuyu", "四不遇", "麒麟", "Lv9", 180, 60,
                  "总在夜半站在床边的灰白身影。\n"
-                 "面具侧戴，声音轻得像在哄谁。\n"
+                 "面具侧戴。尾巴完整，额上一对小角一点也没淡。\n"
                  "仿佛在等一个等了很久的人。",
                  "party_sibuyu");
     sy.addStat("攻击力", 38)
@@ -410,6 +411,12 @@ std::vector<std::pair<std::string, int>> all(const Flags& f) {
     for (Flags::const_iterator it = f.begin(); it != f.end(); ++it) {
         if (it->first.compare(0, 5, "item_") != 0) continue;
         if (it->second.empty()) continue;
+        // 同名只列一行：旧版本用 flag 直接记过 item_fluff_gray，会和
+        // item_<自动 id> 里的同一件绒毛撞成两行。
+        bool dup = false;
+        for (std::size_t i = 0; i < out.size(); ++i)
+            if (out[i].first == it->second) { dup = true; break; }
+        if (dup) continue;
         out.push_back(std::make_pair(it->second, count(f, it->second)));
     }
     return out;
@@ -417,6 +424,18 @@ std::vector<std::pair<std::string, int>> all(const Flags& f) {
 
 std::size_t total(const Flags& f) {
     return all(f).size();
+}
+
+// 新开一局：先把上一局留下的道具 / 数量键全部擦掉，再给出开场持有物。
+// （正常的新局 flags 本来就是空的，这里只是兜底，保证物品栏绝不会串档。）
+std::vector<std::string> freshDefaults(Flags& f) {
+    for (Flags::iterator it = f.begin(); it != f.end();) {
+        if (it->first.compare(0, 5, "item_") == 0 || it->first.compare(0, 4, "cnt_") == 0)
+            it = f.erase(it);
+        else
+            ++it;
+    }
+    return defaultWarehouse();
 }
 
 }  // namespace inventory

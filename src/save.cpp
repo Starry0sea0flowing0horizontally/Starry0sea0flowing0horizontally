@@ -317,7 +317,12 @@ std::string SaveManager::brief(int slot) const {
     if (chapter.empty() && scene.empty()) return "";
     // 章节名和场景名经常重复（「序章」/「序章 · 咫尺天涯」），重复就不写两遍。
     if (chapter.empty()) return scene;
-    if (scene.empty() || scene.compare(0, chapter.size(), chapter) == 0) return chapter;
+    if (scene.empty()) return chapter;
+    if (scene.compare(0, chapter.size(), chapter) == 0) {
+        // 「序章 · 咫尺天涯」这种：章名只是前缀，后面还有真内容，就整句显示。
+        if (scene.size() > chapter.size()) return scene;
+        return chapter;
+    }
     // 场景名必须以「序章 / 第N章 / 终章」打头；否则说明它是一句混进存档的
     // 剧情旁白（旧版本存档 / 手改存档），绝不能当成摘要显示在存档槽里。
     bool looksLikeChapter = false;
@@ -327,6 +332,12 @@ std::string SaveManager::brief(int slot) const {
         for (int i = 0; i < 3; ++i) {
             if (scene.compare(0, 3, heads[i]) == 0) { looksLikeChapter = true; break; }
         }
+    }
+    // 有序号的场景名（「二 · 清晨，宿舍」「四 · 文书阁」）：
+    // 前面那一个汉字 + " · " 就是分节号，直接拿来当摘要——
+    // 二十个存档槽如果全都只显示「序章」，就分不清哪一格是哪一段了。
+    if (scene.size() >= 6 && scene[3] == ' ' && scene.compare(4, 2, "\xC2\xB7") == 0) {
+        return scene;
     }
     if (!looksLikeChapter) return chapter;
     return chapter + " · " + scene;
