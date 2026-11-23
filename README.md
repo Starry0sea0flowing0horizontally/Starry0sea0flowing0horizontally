@@ -34,7 +34,6 @@ huazhitumi/
 │   ├── prologue.cpp     # 序章「咫尺天涯」完整剧情脚本
 ├── tools/                  # 配图制作脚本（转字符画，不参与编译）
 ├── assets/images/          # 配图资源（开场原图 + 字符画预览）
-└── saves/                  # 存档目录（运行时自动生成）
 ```
 
 ---
@@ -47,8 +46,8 @@ huazhitumi/
 
 | 平台 | 下载 |
 | --- | --- |
-| Windows 64 位（MSVC） | [huazhitumi-1.0.2-win64-msvc.zip](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.2/huazhitumi-1.0.2-win64-msvc.zip) |
-| Linux 64 位（GCC） | [huazhitumi-1.0.2-anylinux64-gcc.tar.gz](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.2/huazhitumi-1.0.2-anylinux64-gcc.tgz) |
+| Windows 64 位（MSVC） | [huazhitumi-1.0.3-win64-msvc.zip](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.3/huazhitumi-1.0.3-win64-msvc.zip) |
+| Linux 64 位（GCC） | [huazhitumi-1.0.3-anylinux64-gcc.tar.gz](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.3/huazhitumi-1.0.3-anylinux64-gcc.tgz) |
 
 下载后解压到任意目录，并从解压目录运行 `huazhitumi.exe`（Windows）或 `./huazhitumi`（Linux）。两份压缩包均包含运行所需的 `assets/` 资源；存档会在首次运行时于解压目录中创建。
 

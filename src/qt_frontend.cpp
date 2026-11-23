@@ -4,8 +4,10 @@
 #include "input.h"
 
 #include <QApplication>
+#include <QColor>
 #include <QCloseEvent>
 #include <QFontDatabase>
+#include <QFontMetrics>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMetaObject>
@@ -13,17 +15,18 @@
 #include <QPlainTextEdit>
 #include <QScrollBar>
 #include <QTextBlock>
+#include <QTextCharFormat>
 #include <QTextCursor>
 #include <QVBoxLayout>
 #include <QWidget>
 
 #include <algorithm>
 #include <exception>
-#include <QFontMetrics>
 #include <iostream>
 #include <streambuf>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace game {
 namespace {
@@ -54,6 +57,8 @@ protected:
 class GameWindow final : public QWidget {
 public:
     GameWindow() : output_(new GameOutput(this)) {
+        textFormat_.setForeground(Qt::black);
+        textFormat_.setBackground(Qt::white);
         setWindowTitle(QStringLiteral("花至荼蘼"));
         resize(1000, 760);
 
@@ -77,14 +82,28 @@ public:
 
     void appendText(const QString& text) {
         QMetaObject::invokeMethod(output_, [this, text] {
-            output_->moveCursor(QTextCursor::End);
-            output_->insertPlainText(text);
+            QTextCursor cursor = output_->textCursor();
+            cursor.insertText(text, textFormat_);
+            output_->setTextCursor(cursor);
             output_->verticalScrollBar()->setValue(output_->verticalScrollBar()->maximum());
         }, Qt::QueuedConnection);
     }
 
+    void setTextStyle(const QColor& foreground, const QColor& background,
+                      bool bold, bool underline) {
+        QMetaObject::invokeMethod(output_, [this, foreground, background, bold, underline] {
+            textFormat_.setForeground(foreground);
+            textFormat_.setBackground(background);
+            textFormat_.setFontWeight(bold ? QFont::Bold : QFont::Normal);
+            textFormat_.setFontUnderline(underline);
+        }, Qt::QueuedConnection);
+    }
+
     void clearOutput() {
-        QMetaObject::invokeMethod(output_, [this] { output_->clear(); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(output_, [this] {
+            output_->clear();
+            output_->moveCursor(QTextCursor::Start);
+        }, Qt::QueuedConnection);
     }
 
     void eraseLine() {
@@ -136,6 +155,7 @@ protected:
 
 private:
     GameOutput* output_;
+    QTextCharFormat textFormat_;
 };
 
 class GuiOutputBuffer final : public std::streambuf {
@@ -160,6 +180,104 @@ protected:
     }
 
 private:
+    static QColor xtermColor(int index, bool foreground) {
+        static const QColor baseColors[] = {
+            QColor(0, 0, 0), QColor(128, 0, 0), QColor(0, 128, 0), QColor(128, 128, 0),
+            QColor(0, 0, 128), QColor(128, 0, 128), QColor(0, 128, 128), QColor(192, 192, 192),
+            QColor(128, 128, 128), QColor(255, 0, 0), QColor(0, 255, 0), QColor(255, 255, 0),
+            QColor(0, 0, 255), QColor(255, 0, 255), QColor(0, 255, 255), QColor(255, 255, 255)
+        };
+        index = std::clamp(index, 0, 255);
+        QColor color;
+        if (index < 16) {
+            color = baseColors[index];
+        } else if (index < 232) {
+            const int cube = index - 16;
+            const auto component = [](int value) { return value == 0 ? 0 : 55 + value * 40; };
+            color = QColor(component(cube / 36), component((cube / 6) % 6),
+                           component(cube % 6));
+        } else {
+            const int gray = 8 + (index - 232) * 10;
+            color = QColor(gray, gray, gray);
+        }
+
+        if (foreground) {
+            if (index == 15) return QColor(20, 20, 20);
+            if (color.lightness() > 100) color = color.darker(155);
+        }
+        return color;
+    }
+
+    void applySgr(const std::string& parameters) {
+        std::vector<int> values;
+        int value = 0;
+        bool hasValue = false;
+        for (char ch : parameters) {
+            if (ch >= '0' && ch <= '9') {
+                value = value * 10 + (ch - '0');
+                hasValue = true;
+            } else if (ch == ';') {
+                values.push_back(hasValue ? value : 0);
+                value = 0;
+                hasValue = false;
+            }
+        }
+        values.push_back(hasValue ? value : 0);
+
+        for (std::size_t i = 0; i < values.size(); ++i) {
+            const int code = values[i];
+            if (code == 0) {
+                foreground_ = QColor(0, 0, 0);
+                background_ = QColor(255, 255, 255);
+                bold_ = false;
+                underline_ = false;
+                dim_ = false;
+            } else if (code == 1) {
+                bold_ = true;
+            } else if (code == 2) {
+                dim_ = true;
+            } else if (code == 4) {
+                underline_ = true;
+            } else if (code == 22) {
+                bold_ = false;
+                dim_ = false;
+            } else if (code == 24) {
+                underline_ = false;
+            } else if (code == 39) {
+                foreground_ = QColor(0, 0, 0);
+            } else if (code == 49) {
+                background_ = QColor(255, 255, 255);
+            } else if (code >= 30 && code <= 37) {
+                foreground_ = xtermColor(code - 30, true);
+            } else if (code >= 90 && code <= 97) {
+                foreground_ = xtermColor(code - 90 + 8, true);
+            } else if (code >= 40 && code <= 47) {
+                background_ = xtermColor(code - 40, false);
+            } else if (code >= 100 && code <= 107) {
+                background_ = xtermColor(code - 100 + 8, false);
+            } else if ((code == 38 || code == 48) && i + 1 < values.size()) {
+                QColor color;
+                const bool isForeground = code == 38;
+                if (values[i + 1] == 5 && i + 2 < values.size()) {
+                    color = xtermColor(values[i + 2], isForeground);
+                    i += 2;
+                } else if (values[i + 1] == 2 && i + 4 < values.size()) {
+                    color = QColor(std::clamp(values[i + 2], 0, 255),
+                                   std::clamp(values[i + 3], 0, 255),
+                                   std::clamp(values[i + 4], 0, 255));
+                    i += 4;
+                }
+                if (color.isValid()) {
+                    if (isForeground) foreground_ = color;
+                    else background_ = color;
+                }
+            }
+        }
+        QColor foreground = foreground_;
+        if (dim_) foreground = foreground.darker(125);
+        window_.setTextStyle(foreground, background_, bold_, underline_);
+    }
+
     void consume(char ch) {
         if (ansiState_ == 1) {
             ansiState_ = (ch == '[') ? 2 : 0;
@@ -170,6 +288,8 @@ private:
                 if (ch == 'J' && ansiParams_.find('2') != std::string::npos) {
                     flushText(true);
                     window_.clearOutput();
+                } else if (ch == 'm') {
+                    applySgr(ansiParams_);
                 } else if (ch == 'F') {
                     flushText(true);
                     window_.moveCursorUp();
@@ -227,6 +347,11 @@ private:
     GameWindow& window_;
     std::string text_;
     std::string ansiParams_;
+    QColor foreground_{0, 0, 0};
+    QColor background_{255, 255, 255};
+    bool bold_ = false;
+    bool underline_ = false;
+    bool dim_ = false;
     int ansiState_ = 0;
 };
 
