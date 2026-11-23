@@ -3,6 +3,14 @@
 // ============================================================================
 #include "game.h"
 
+#ifdef HZ_QT_FRONTEND
+#include "qt_frontend.h"
+
+int main(int argc, char* argv[]) {
+    return game::runQtFrontend(argc, argv);
+}
+#else
+
 #ifdef _WIN32
 int main() {
     game::Game game;
@@ -46,4 +54,6 @@ int main() {
     game.run();
     return 0;
 }
+#endif
+
 #endif

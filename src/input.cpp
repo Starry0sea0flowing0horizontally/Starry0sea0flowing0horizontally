@@ -12,6 +12,108 @@
 
 #include <iostream>
 
+#ifdef HZ_QT_FRONTEND
+#include <condition_variable>
+#include <deque>
+#include <mutex>
+
+namespace game::input {
+
+namespace {
+std::mutex g_mutex;
+std::condition_variable g_inputReady;
+struct InputEvent {
+    int key;
+    bool mouseClick;
+    int x;
+    int y;
+};
+std::deque<InputEvent> g_events;
+bool g_quitRequested = false;
+}
+
+void init() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    g_events.clear();
+    g_quitRequested = false;
+}
+
+void restore() {}
+void emergencyRestore() {}
+
+bool kbhit() {
+    std::lock_guard<std::mutex> lock(g_mutex);
+    return g_quitRequested || !g_events.empty();
+}
+
+int readKey() {
+    for (;;) {
+        std::unique_lock<std::mutex> lock(g_mutex);
+        g_inputReady.wait(lock, [] { return g_quitRequested || !g_events.empty(); });
+        if (g_quitRequested) throw InputCancelled();
+        const InputEvent event = g_events.front();
+        g_events.pop_front();
+        if (!event.mouseClick) return event.key;
+    }
+}
+
+std::pair<int, bool> readEvent(int& outX, int& outY) {
+    std::unique_lock<std::mutex> lock(g_mutex);
+    g_inputReady.wait(lock, [] { return g_quitRequested || !g_events.empty(); });
+    if (g_quitRequested) throw InputCancelled();
+    const InputEvent event = g_events.front();
+    g_events.pop_front();
+    if (event.mouseClick) {
+        outX = event.x;
+        outY = event.y;
+        return std::make_pair(KEY_NONE, true);
+    }
+    return std::make_pair(event.key, false);
+}
+
+std::string readLine() {
+    std::string line;
+    for (;;) {
+        const int key = readKey();
+        if (key == KEY_ENTER) return line;
+        if (key == KEY_BACKSPACE) {
+            if (!line.empty()) line.pop_back();
+        } else if (key >= 0x20 && key < 0x7f) {
+            line.push_back(static_cast<char>(key));
+        }
+    }
+}
+
+void pushKey(int key) {
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (g_quitRequested) return;
+        g_events.push_back({key, false, 0, 0});
+    }
+    g_inputReady.notify_one();
+}
+
+void pushMouseClick(int x, int y) {
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        if (g_quitRequested) return;
+        g_events.push_back({KEY_NONE, true, x, y});
+    }
+    g_inputReady.notify_one();
+}
+
+void requestQuit() {
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        g_quitRequested = true;
+    }
+    g_inputReady.notify_all();
+}
+
+}  // namespace game::input
+
+#else
+
 #ifdef _WIN32
 // ----------------------------- Windows -------------------------------------
 #include <conio.h>
@@ -320,5 +422,7 @@ std::string readLine() {
 }
 
 }  // namespace game::input
+
+#endif
 
 #endif

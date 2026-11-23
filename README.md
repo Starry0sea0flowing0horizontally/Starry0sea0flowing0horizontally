@@ -9,7 +9,7 @@
 >
 > 白麒麟 **四不相** 与灰麒麟 **四不遇**——两个「死不相遇」的灵魂，跨越一万年的执念与守望。
 
-本项目是一个**C++23 文字冒险游戏引擎 + 完整可玩的序章「咫尺天涯」**，使用 vcpkg 管理 `libarchive` 依赖，跨平台（Windows / Linux / macOS）。
+本项目是一个**C++23 文字冒险游戏引擎 + 完整可玩的序章「咫尺天涯」**，使用 vcpkg 管理 `libarchive` 依赖，跨平台（Windows / Linux / macOS）。安装了兼容的 Qt 6 Widgets 时会启动白底黑字桌面界面；未检测到 Qt 时仍可使用原有终端界面。
 
 ---
 
@@ -19,6 +19,7 @@
 huazhitumi/
 ├── CMakeLists.txt          # CMake 构建（通用）
 ├── README.md
+├── script/                 # Windows / Linux 构建脚本及说明
 ├── include/                # C++头文件
 ├── src/
 │   ├── main.cpp            # 程序入口
@@ -40,7 +41,7 @@ huazhitumi/
 
 ## 二、编译与运行
 
-> 本项目需要支持 **C++23** 的编译器，以及 [CMake 4.3](https://cmake.org/) 及以上和 [Ninja](https://ninja-build.org/)（Windows 构建脚本使用 Ninja）。中文源码统一采用 **UTF-8 编码**。
+> 本项目需要支持 **C++23** 的编译器，以及 [CMake 4.3](https://cmake.org/) 及以上和 [Ninja](https://ninja-build.org/)（Windows 构建脚本使用 Ninja）。桌面界面需要 Qt 6 Widgets；中文源码统一采用 **UTF-8 编码**。
 
 ### 方式 A：下载预编译包 (推荐)
 
@@ -51,45 +52,9 @@ huazhitumi/
 
 下载后解压到任意目录，并从解压目录运行 `huazhitumi.exe`（Windows）或 `./huazhitumi`（Linux）。两份压缩包均包含运行所需的 `assets/` 资源；存档会在首次运行时于解压目录中创建。
 
-### 方式 B：PowerShell 构建脚本
+### 方式 B：构建脚本
 
-在仓库根目录打开 PowerShell：
-
-```powershell
-$env:VCPKG_ROOT = "C:\path\to\vcpkg"
-pwsh .\build.ps1
-```
-
-脚本会清理并重新生成 `build/`，使用 CMake + Ninja 编译 Release 版本。运行：
-
-```powershell
-.\build\huazhitumi.exe
-```
-
-首次使用前，请安装 CMake、Ninja、支持 C++23 的编译器和 vcpkg，并设置 `VCPKG_ROOT` 指向 vcpkg 根目录。CMake 会通过 vcpkg manifest 自动安装 `libarchive`。
-
-### 方式 C：手动使用 CMake
-
-```bash
-export VCPKG_ROOT=/path/to/vcpkg
-cmake -S . -B build -G Ninja
-cmake --build build
-```
-
-运行：
-
-- Windows：`.\build\huazhitumi.exe`
-- Linux/macOS：`./build/huazhitumi`
-
-若系统已配置 CMake 可用的编译器，但未安装 Ninja，也可以移除 `-G Ninja`，改由 CMake 根据环境选择默认生成器。
-
-生成与现有 Release 一致格式的压缩包：
-
-```bash
-cpack --config build/CPackConfig.cmake
-```
-
-Windows 会生成 `huazhitumi-1.0.2-win64-msvc.zip`，Linux 会生成 `huazhitumi-1.0.2-anylinux64-gcc.tar.gz`。
+Windows、WSL 和 Linux 的构建方式、`debug/release` 选项及 Windows 编译器选择见 [`script/README.md`](script/README.md)。默认构建类型为 Debug。
 
 ---
 
