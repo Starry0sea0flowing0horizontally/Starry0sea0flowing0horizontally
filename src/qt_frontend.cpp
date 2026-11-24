@@ -7,7 +7,6 @@
 #include <QColor>
 #include <QCloseEvent>
 #include <QFont>
-#include <QFontDatabase>
 #include <QFontMetrics>
 #include <QFontMetricsF>
 #include <QGuiApplication>
@@ -22,14 +21,18 @@
 #include <QTextBlock>
 #include <QTextCharFormat>
 #include <QTextCursor>
+#include <QTimer>
 #include <QVBoxLayout>
 #include <QWidget>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <deque>
 #include <exception>
+#include <functional>
 #include <iostream>
+#include <mutex>
 #include <streambuf>
 #include <string>
 #include <thread>
@@ -63,7 +66,7 @@ protected:
 
 class GameWindow final : public QWidget {
 public:
-    GameWindow() : output_(new GameOutput(this)) {
+    GameWindow() : output_(new GameOutput(this)), updateTimer_(new QTimer(this)) {
         textFormat_.setForeground(QColor("#f2f4f8"));
         textFormat_.clearBackground();
         setWindowTitle(QStringLiteral("花至荼蘼"));
@@ -76,9 +79,15 @@ public:
         output_->setReadOnly(true);
         output_->setUndoRedoEnabled(false);
         output_->setLineWrapMode(QPlainTextEdit::NoWrap);
-        QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
-        font.setPointSize(16);
+        QFont font;
+        font.setFamilies({QStringLiteral("Cascadia Mono"),
+                          QStringLiteral("Microsoft YaHei UI"),
+                          QStringLiteral("Microsoft YaHei")});
+        font.setStyleHint(QFont::Monospace);
+        font.setFixedPitch(true);
+        font.setPointSize(12);
         output_->setFont(font);
+        output_->setMaximumBlockCount(3000);
         output_->setFocusPolicy(Qt::NoFocus);
         QPalette outputPalette = output_->palette();
         outputPalette.setColor(QPalette::Base, QColor("#15171c"));
@@ -104,39 +113,43 @@ public:
         layout->addWidget(output_);
         setFocusPolicy(Qt::StrongFocus);
         setFixedWindowSize(help, layout);
+
+        updateTimer_->setInterval(16);
+        connect(updateTimer_, &QTimer::timeout, this, [this] { processPendingOperations(); });
+        updateTimer_->start();
     }
 
     void appendText(const QString& text) {
-        QMetaObject::invokeMethod(output_, [this, text] {
-            QTextCursor cursor = output_->textCursor();
-            cursor.insertText(text, textFormat_);
-            output_->setTextCursor(cursor);
-            output_->verticalScrollBar()->setValue(output_->verticalScrollBar()->maximum());
-        }, Qt::QueuedConnection);
+        std::lock_guard<std::mutex> lock(pendingMutex_);
+        if (!pendingOperations_.empty() && pendingOperations_.back().isText) {
+            pendingOperations_.back().text += text;
+        } else {
+            pendingOperations_.push_back(UiOperation{true, text, {}});
+        }
     }
 
     void setTextStyle(const QColor& foreground, const QColor& background,
                       bool bold, bool underline, bool backgroundExplicit) {
-        QMetaObject::invokeMethod(output_, [this, foreground, background, bold, underline,
-                                            backgroundExplicit] {
+        enqueue([this, foreground, background, bold, underline, backgroundExplicit]
+                (QTextCursor&) {
             textFormat_.setForeground(foreground);
             if (backgroundExplicit) textFormat_.setBackground(background);
             else textFormat_.clearBackground();
             textFormat_.setFontWeight(bold ? QFont::Bold : QFont::Normal);
             textFormat_.setFontUnderline(underline);
-        }, Qt::QueuedConnection);
+        });
     }
 
     void clearOutput() {
-        QMetaObject::invokeMethod(output_, [this] {
+        enqueue([this](QTextCursor& cursor) {
             output_->clear();
-            output_->moveCursor(QTextCursor::Start);
-        }, Qt::QueuedConnection);
+            cursor = output_->textCursor();
+            cursor.movePosition(QTextCursor::Start);
+        });
     }
 
     void eraseLine() {
-        QMetaObject::invokeMethod(output_, [this] {
-            QTextCursor cursor = output_->textCursor();
+        enqueue([](QTextCursor& cursor) {
             cursor.movePosition(QTextCursor::StartOfBlock);
             if (cursor.block().next().isValid()) {
                 cursor.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
@@ -144,16 +157,17 @@ public:
                 cursor.select(QTextCursor::LineUnderCursor);
             }
             cursor.removeSelectedText();
-            output_->setTextCursor(cursor);
-        }, Qt::QueuedConnection);
+        });
     }
 
     void moveCursorUp() {
-        QMetaObject::invokeMethod(output_, [this] {
-            QTextCursor cursor = output_->textCursor();
+        enqueue([](QTextCursor& cursor) {
             cursor.movePosition(QTextCursor::Up);
-            output_->setTextCursor(cursor);
-        }, Qt::QueuedConnection);
+        });
+    }
+
+    void flushPendingOperations() {
+        processPendingOperations();
     }
 
 protected:
@@ -187,6 +201,40 @@ protected:
     }
 
 private:
+    struct UiOperation {
+        bool isText = false;
+        QString text;
+        std::function<void(QTextCursor&)> action;
+    };
+
+    void enqueue(UiOperation operation) {
+        std::lock_guard<std::mutex> lock(pendingMutex_);
+        pendingOperations_.push_back(std::move(operation));
+    }
+
+    void enqueue(std::function<void(QTextCursor&)> action) {
+        enqueue(UiOperation{false, {}, std::move(action)});
+    }
+
+    void processPendingOperations() {
+        std::deque<UiOperation> operations;
+        {
+            std::lock_guard<std::mutex> lock(pendingMutex_);
+            operations.swap(pendingOperations_);
+        }
+        if (operations.empty()) return;
+
+        QTextCursor cursor = output_->textCursor();
+        cursor.beginEditBlock();
+        for (const UiOperation& operation : operations) {
+            if (operation.isText) cursor.insertText(operation.text, textFormat_);
+            else operation.action(cursor);
+        }
+        cursor.endEditBlock();
+        output_->setTextCursor(cursor);
+        output_->verticalScrollBar()->setValue(output_->verticalScrollBar()->maximum());
+    }
+
     void setFixedWindowSize(const QLabel* help, const QVBoxLayout* layout) {
         const QFontMetricsF metrics(output_->font());
         const QMargins margins = layout->contentsMargins();
@@ -219,6 +267,9 @@ private:
 
     GameOutput* output_;
     QTextCharFormat textFormat_;
+    QTimer* updateTimer_;
+    std::mutex pendingMutex_;
+    std::deque<UiOperation> pendingOperations_;
 };
 
 class GuiOutputBuffer final : public std::streambuf {
@@ -436,7 +487,7 @@ int runQtFrontend(int argc, char* argv[]) {
     std::streambuf* previousOutput = std::cout.rdbuf(&output);
 
     window.show();
-    std::thread gameThread([&app, &output] {
+    std::thread gameThread([&app, &output, &window] {
         try {
             Game game;
             game.run();
@@ -444,7 +495,10 @@ int runQtFrontend(int argc, char* argv[]) {
         } catch (const std::exception& error) {
             std::cout << "\n游戏异常终止：" << error.what() << '\n';
         }
-        QMetaObject::invokeMethod(&app, [&app] { app.quit(); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(&app, [&app, &window] {
+            window.flushPendingOperations();
+            app.quit();
+        }, Qt::QueuedConnection);
     });
 
     const int result = app.exec();
