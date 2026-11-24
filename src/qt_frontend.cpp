@@ -6,13 +6,18 @@
 #include <QApplication>
 #include <QColor>
 #include <QCloseEvent>
+#include <QFont>
 #include <QFontDatabase>
 #include <QFontMetrics>
+#include <QFontMetricsF>
+#include <QGuiApplication>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMetaObject>
 #include <QMouseEvent>
+#include <QPalette>
 #include <QPlainTextEdit>
+#include <QScreen>
 #include <QScrollBar>
 #include <QTextBlock>
 #include <QTextCharFormat>
@@ -21,6 +26,8 @@
 #include <QWidget>
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <exception>
 #include <iostream>
 #include <streambuf>
@@ -57,27 +64,46 @@ protected:
 class GameWindow final : public QWidget {
 public:
     GameWindow() : output_(new GameOutput(this)) {
-        textFormat_.setForeground(Qt::black);
-        textFormat_.setBackground(Qt::white);
+        textFormat_.setForeground(QColor("#f2f4f8"));
+        textFormat_.clearBackground();
         setWindowTitle(QStringLiteral("花至荼蘼"));
-        resize(1000, 760);
 
         auto* layout = new QVBoxLayout(this);
         auto* help = new QLabel(
             QStringLiteral("方向键移动/选择，回车确认，空格推进，Esc 打开菜单，数字键快速选择"),
             this);
+        help->setStyleSheet(QStringLiteral("color: #f2f4f8; padding: 6px;"));
         output_->setReadOnly(true);
         output_->setUndoRedoEnabled(false);
         output_->setLineWrapMode(QPlainTextEdit::NoWrap);
-        output_->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+        QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        font.setPointSize(16);
+        output_->setFont(font);
         output_->setFocusPolicy(Qt::NoFocus);
+        QPalette outputPalette = output_->palette();
+        outputPalette.setColor(QPalette::Base, QColor("#15171c"));
+        outputPalette.setColor(QPalette::Text, QColor("#f2f4f8"));
+        output_->setPalette(outputPalette);
+        output_->viewport()->setPalette(outputPalette);
+        output_->setAutoFillBackground(true);
+        output_->viewport()->setAutoFillBackground(true);
         output_->setStyleSheet(
-            QStringLiteral("QPlainTextEdit { background: #ffffff; color: #000000; "
-                           "selection-background-color: #cce5ff; }"));
-        setStyleSheet(QStringLiteral("QWidget { background: #ffffff; color: #000000; }"));
+            QStringLiteral("QPlainTextEdit { background-color: #15171c; color: #f2f4f8; "
+                           "selection-background-color: #365a86; }"
+                           "QPlainTextEdit QWidget { background-color: #15171c; }"));
+        setStyleSheet(QStringLiteral("QWidget { background: #15171c; color: #f2f4f8; }"));
+        output_->viewport()->setStyleSheet(QStringLiteral("background-color: #15171c;"));
+        output_->setBackgroundVisible(true);
+        outputPalette = output_->palette();
+        outputPalette.setColor(QPalette::Base, QColor("#15171c"));
+        outputPalette.setColor(QPalette::Text, QColor("#f2f4f8"));
+        output_->setPalette(outputPalette);
+        output_->viewport()->setPalette(outputPalette);
+        output_->viewport()->setAutoFillBackground(true);
         layout->addWidget(help);
         layout->addWidget(output_);
         setFocusPolicy(Qt::StrongFocus);
+        setFixedWindowSize(help, layout);
     }
 
     void appendText(const QString& text) {
@@ -90,10 +116,12 @@ public:
     }
 
     void setTextStyle(const QColor& foreground, const QColor& background,
-                      bool bold, bool underline) {
-        QMetaObject::invokeMethod(output_, [this, foreground, background, bold, underline] {
+                      bool bold, bool underline, bool backgroundExplicit) {
+        QMetaObject::invokeMethod(output_, [this, foreground, background, bold, underline,
+                                            backgroundExplicit] {
             textFormat_.setForeground(foreground);
-            textFormat_.setBackground(background);
+            if (backgroundExplicit) textFormat_.setBackground(background);
+            else textFormat_.clearBackground();
             textFormat_.setFontWeight(bold ? QFont::Bold : QFont::Normal);
             textFormat_.setFontUnderline(underline);
         }, Qt::QueuedConnection);
@@ -109,7 +137,12 @@ public:
     void eraseLine() {
         QMetaObject::invokeMethod(output_, [this] {
             QTextCursor cursor = output_->textCursor();
-            cursor.select(QTextCursor::LineUnderCursor);
+            cursor.movePosition(QTextCursor::StartOfBlock);
+            if (cursor.block().next().isValid()) {
+                cursor.movePosition(QTextCursor::NextBlock, QTextCursor::KeepAnchor);
+            } else {
+                cursor.select(QTextCursor::LineUnderCursor);
+            }
             cursor.removeSelectedText();
             output_->setTextCursor(cursor);
         }, Qt::QueuedConnection);
@@ -154,6 +187,36 @@ protected:
     }
 
 private:
+    void setFixedWindowSize(const QLabel* help, const QVBoxLayout* layout) {
+        const QFontMetricsF metrics(output_->font());
+        const QMargins margins = layout->contentsMargins();
+        const int outputChromeWidth = output_->document()->documentMargin() * 2 +
+                                      output_->frameWidth() * 2 +
+                                      output_->verticalScrollBar()->sizeHint().width();
+        const int outputChromeHeight = output_->document()->documentMargin() * 2 +
+                                       output_->frameWidth() * 2 +
+                                       output_->horizontalScrollBar()->sizeHint().height();
+        const int desiredWidth =
+            static_cast<int>(std::ceil(metrics.horizontalAdvance(QLatin1Char('M')) *
+                                       kQtDisplayColumns)) +
+            outputChromeWidth + margins.left() + margins.right();
+        const int desiredHeight =
+            static_cast<int>(std::ceil(metrics.lineSpacing() * kQtDisplayRows)) +
+            outputChromeHeight + help->sizeHint().height() + layout->spacing() +
+            margins.top() + margins.bottom();
+
+        QScreen* screen = QGuiApplication::primaryScreen();
+        if (!screen) {
+            setFixedSize(desiredWidth, desiredHeight);
+            return;
+        }
+
+        const QRect available = screen->availableGeometry();
+        const int maxWidth = std::max(1, available.width() - 32);
+        const int maxHeight = std::max(1, available.height() - 48);
+        setFixedSize(std::min(desiredWidth, maxWidth), std::min(desiredHeight, maxHeight));
+    }
+
     GameOutput* output_;
     QTextCharFormat textFormat_;
 };
@@ -202,8 +265,9 @@ private:
         }
 
         if (foreground) {
-            if (index == 15) return QColor(20, 20, 20);
-            if (color.lightness() > 100) color = color.darker(155);
+            if (index == 0) return QColor("#b8c0cc");
+            if (index == 15) return QColor("#ffffff");
+            if (color.lightness() < 80) color = color.lighter(170);
         }
         return color;
     }
@@ -227,11 +291,12 @@ private:
         for (std::size_t i = 0; i < values.size(); ++i) {
             const int code = values[i];
             if (code == 0) {
-                foreground_ = QColor(0, 0, 0);
-                background_ = QColor(255, 255, 255);
+                foreground_ = QColor("#f2f4f8");
+                background_ = QColor("#15171c");
                 bold_ = false;
                 underline_ = false;
                 dim_ = false;
+                backgroundExplicit_ = false;
             } else if (code == 1) {
                 bold_ = true;
             } else if (code == 2) {
@@ -244,17 +309,20 @@ private:
             } else if (code == 24) {
                 underline_ = false;
             } else if (code == 39) {
-                foreground_ = QColor(0, 0, 0);
+                foreground_ = QColor("#f2f4f8");
             } else if (code == 49) {
-                background_ = QColor(255, 255, 255);
+                background_ = QColor("#15171c");
+                backgroundExplicit_ = false;
             } else if (code >= 30 && code <= 37) {
                 foreground_ = xtermColor(code - 30, true);
             } else if (code >= 90 && code <= 97) {
                 foreground_ = xtermColor(code - 90 + 8, true);
             } else if (code >= 40 && code <= 47) {
                 background_ = xtermColor(code - 40, false);
+                backgroundExplicit_ = true;
             } else if (code >= 100 && code <= 107) {
                 background_ = xtermColor(code - 100 + 8, false);
+                backgroundExplicit_ = true;
             } else if ((code == 38 || code == 48) && i + 1 < values.size()) {
                 QColor color;
                 const bool isForeground = code == 38;
@@ -269,13 +337,16 @@ private:
                 }
                 if (color.isValid()) {
                     if (isForeground) foreground_ = color;
-                    else background_ = color;
+                    else {
+                        background_ = color;
+                        backgroundExplicit_ = true;
+                    }
                 }
             }
         }
         QColor foreground = foreground_;
         if (dim_) foreground = foreground.darker(125);
-        window_.setTextStyle(foreground, background_, bold_, underline_);
+        window_.setTextStyle(foreground, background_, bold_, underline_, backgroundExplicit_);
     }
 
     void consume(char ch) {
@@ -352,6 +423,7 @@ private:
     bool bold_ = false;
     bool underline_ = false;
     bool dim_ = false;
+    bool backgroundExplicit_ = false;
     int ansiState_ = 0;
 };
 

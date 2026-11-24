@@ -2,6 +2,10 @@
 //  花至荼蘼 —— 文本渲染器实现
 // ============================================================================
 #include "renderer.h"
+
+#ifdef HZ_QT_FRONTEND
+#include "qt_frontend.h"
+#endif
 #include "config.h"
 #include "input.h"
 #include "cover_art.h"
@@ -85,7 +89,10 @@ int displayWidth(const std::string& s) {
 }  // namespace
 
 void Renderer::init() {
-#ifdef _WIN32
+#ifdef HZ_QT_FRONTEND
+    g_termWidth = kQtDisplayColumns;
+    g_termHeight = kQtDisplayRows;
+#elif defined(_WIN32)
     // 控制台以 UTF-8 解释输出字节
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
