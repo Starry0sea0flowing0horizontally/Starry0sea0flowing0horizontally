@@ -1079,6 +1079,7 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                 MenuAct act = systemMenu(script, pc, flags);
                 if (act == MenuAct::Title || act == MenuAct::Quit) return true;
                 if (act == MenuAct::Reload) return false;   // script/pc/flags 已就地更新
+                if (act == MenuAct::Continue) lastDrawnSig.clear();
             }
             // 清晨开场字幕还没读完：回车 / 空格先把字幕收掉（和睡着的夜里一样，只认这两个键）。
             if (n.mapId == "dorm_morning" && subtitle.remainMs > 0 &&
@@ -1404,6 +1405,7 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             MenuAct act = systemMenu(script, pc, flags);
             if (act == MenuAct::Title || act == MenuAct::Quit) return true;
             if (act == MenuAct::Reload) return false;   // script/pc/flags 已就地更新
+            if (act == MenuAct::Continue) lastDrawnSig.clear();
         }
 
         // 刚才那一步迈进了拱门 / 拐角：切图，runMap 结束
@@ -1607,6 +1609,19 @@ Game::AfterAction Game::afterText(Script& script, std::size_t& pc, Flags& flags)
             MenuAct act = systemMenu(script, pc, flags);
             if (act == MenuAct::Title || act == MenuAct::Quit) return AfterAction::Exit;
             if (act == MenuAct::Reload) return AfterAction::Exit;   // 读档后重跑
+            const Node& current = script.nodes[pc];
+            bodyLines_ = 0;
+            if (current.type == NodeType::Dialogue) {
+                renderer_.printLine(current.speaker,
+                    current.spkColor.empty() ? color::WHITE : current.spkColor.c_str());
+                renderer_.printLine("　　" + current.text,
+                    current.color.empty() ? nullptr : current.color.c_str());
+                bodyLines_ = 2;
+            } else if (current.type == NodeType::Narration) {
+                renderer_.printLine("　　" + current.text,
+                    current.color.empty() ? color::DIM : current.color.c_str());
+                bodyLines_ = 1;
+            }
         } else {
             return AfterAction::Next;
         }
@@ -1716,7 +1731,10 @@ Game::MenuAct Game::systemMenu(Script& script, std::size_t& pc, Flags& flags) {
         } else if (k == input::KEY_DOWN) {
             if (sel + 1 < (outer == 0 ? N : std::size_t(4))) sel++;
         } else if (k == input::KEY_ESC) {
-            if (outer == 0) return MenuAct::Continue;
+            if (outer == 0) {
+                renderer_.clear();
+                return MenuAct::Continue;
+            }
             outer = 0;
             sel = 0;
         } else if (k >= '1' && k <= '9') {
