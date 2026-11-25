@@ -132,7 +132,7 @@ void Renderer::init() {
 //   2. 光标归零，并把窗口滚回最顶上。
 // 这样无论之前打过多少行，屏幕上都不会残留任何旧字。
 void Renderer::clear() {
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(HZ_QT_FRONTEND)
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut != INVALID_HANDLE_VALUE && hOut != nullptr) {
         CONSOLE_SCREEN_BUFFER_INFO csbi;

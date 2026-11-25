@@ -6,7 +6,10 @@
 #include <QApplication>
 #include <QColor>
 #include <QCloseEvent>
+#include <QCoreApplication>
+#include <QDebug>
 #include <QFont>
+#include <QFontDatabase>
 #include <QFontMetrics>
 #include <QFontMetricsF>
 #include <QGuiApplication>
@@ -79,10 +82,21 @@ public:
         output_->setReadOnly(true);
         output_->setUndoRedoEnabled(false);
         output_->setLineWrapMode(QPlainTextEdit::NoWrap);
+        const QString bundledFontPath =
+            QCoreApplication::applicationDirPath() +
+            QStringLiteral("/assets/CascadiaCode-2407.24/ttf/CascadiaMono.ttf");
+        const int bundledFontId = QFontDatabase::addApplicationFont(bundledFontPath);
+        QStringList fontFamilies;
+        if (bundledFontId >= 0) {
+            fontFamilies = QFontDatabase::applicationFontFamilies(bundledFontId);
+        } else {
+            qWarning() << "Could not load bundled font:" << bundledFontPath;
+            fontFamilies << QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+        }
+        fontFamilies << QStringLiteral("Microsoft YaHei UI")
+                     << QStringLiteral("Microsoft YaHei");
         QFont font;
-        font.setFamilies({QStringLiteral("Cascadia Mono"),
-                          QStringLiteral("Microsoft YaHei UI"),
-                          QStringLiteral("Microsoft YaHei")});
+        font.setFamilies(fontFamilies);
         font.setStyleHint(QFont::Monospace);
         font.setFixedPitch(true);
         font.setPointSize(12);

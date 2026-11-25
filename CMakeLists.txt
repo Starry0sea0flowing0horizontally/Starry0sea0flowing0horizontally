@@ -54,6 +54,14 @@ if(Qt6_FOUND)
   target_sources(huazhitumi PRIVATE src/qt_frontend.cpp)
   target_compile_definitions(huazhitumi PRIVATE HZ_QT_FRONTEND)
   target_link_libraries(huazhitumi PRIVATE Qt6::Widgets)
+  add_custom_command(TARGET huazhitumi POST_BUILD
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+      "$<TARGET_FILE_DIR:huazhitumi>/assets/CascadiaCode-2407.24/ttf"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/assets/CascadiaCode-2407.24/ttf/CascadiaMono.ttf"
+      "$<TARGET_FILE_DIR:huazhitumi>/assets/CascadiaCode-2407.24/ttf/CascadiaMono.ttf"
+    VERBATIM
+  )
   if(WIN32)
     set_target_properties(huazhitumi PROPERTIES WIN32_EXECUTABLE TRUE)
     find_program(QT_DEPLOY_TOOL windeployqt HINTS "${Qt6_DIR}/../../../bin" REQUIRED)
