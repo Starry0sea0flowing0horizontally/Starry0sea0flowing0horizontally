@@ -298,7 +298,22 @@ protected:
     }
 
     std::streamsize xsputn(const char* data, std::streamsize size) override {
-        for (std::streamsize i = 0; i < size; ++i) consume(data[i]);
+        std::streamsize offset = 0;
+        while (offset < size) {
+            if (ansiState_ != 0) {
+                consume(data[offset++]);
+                continue;
+            }
+            if (data[offset] == '\033') {
+                consume(data[offset++]);
+                continue;
+            }
+
+            std::streamsize end = offset + 1;
+            while (end < size && data[end] != '\033') ++end;
+            text_.append(data + offset, static_cast<std::size_t>(end - offset));
+            offset = end;
+        }
         return size;
     }
 
