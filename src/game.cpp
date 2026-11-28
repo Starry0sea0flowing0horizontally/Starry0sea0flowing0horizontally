@@ -1508,12 +1508,23 @@ void Game::renderChapterEnd(const Node& n) {
     bodyLines_ = 0;
     for (int i = 0; i < 6; ++i) renderer_.newline();
     const std::size_t artRows = sizeof(bigtext::WATCHING) / sizeof(bigtext::WATCHING[0]);
+    // 每行都被 rstrip 过，长度不等（64~70 列）。若逐行居中，短的行会各自
+    // 往右挪一格，整幅字就跟着歪、像被拆开——必须先把所有行补齐到同宽，
+    // 让整块图只居中一次。
+    int artWidth = 0;
+    for (std::size_t k = 0; k < artRows; ++k) {
+        const int lw = Renderer::widthOf(bigtext::WATCHING[k]);
+        if (lw > artWidth) artWidth = lw;
+    }
     for (std::size_t k = 0; k < artRows; ++k) {
         if (bigtext::WATCHING[k][0] == '\0') {
             renderer_.newline();
-        } else {
-            renderer_.printCentered(bigtext::WATCHING[k], color::RED);
+            continue;
         }
+        std::string row = bigtext::WATCHING[k];
+        row.append(static_cast<std::size_t>(
+                       artWidth - Renderer::widthOf(bigtext::WATCHING[k])), ' ');
+        renderer_.printCentered(row, color::RED);
     }
     renderer_.printCentered("······", color::RED);
     renderer_.newline();

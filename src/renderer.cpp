@@ -84,6 +84,39 @@ int displayWidth(const std::string& s) {
 
 }  // namespace
 
+#ifdef _WIN32
+namespace {
+
+// 结语页那句「我在看着你」是用半块字符（█▀▄）一格一格拼出来的。
+// 但中文字体（新宋体/宋体/微软雅黑）里的 ▀ 和 ▄ 左右各留了 1 像素空隙，
+// 拼上去就成了「一条条竖线切过笔画」的破烂样子——这是字体本身的问题，
+// 换成什么图案都救不回来；只有 █ 是齐边的。
+// 所以启动时把控制台字体换成块字符齐边的等宽字体（Consolas 等），
+// 字号保持用户原来的大小，窗口列数不变；中文靠 GDI 字体链接照常显示。
+// 换字体失败就算了，游戏照常跑。
+void preferBlockSafeFont(HANDLE hOut) {
+    CONSOLE_FONT_INFOEX cfi;
+    ZeroMemory(&cfi, sizeof(cfi));
+    cfi.cbSize = sizeof(cfi);
+    if (!GetCurrentConsoleFontEx(hOut, FALSE, &cfi)) return;
+    if (wcscmp(cfi.FaceName, L"Consolas") == 0) return;
+    const wchar_t* const cands[] = { L"Consolas", L"Lucida Console", L"Courier New" };
+    for (int i = 0; i < 3; ++i) {
+        CONSOLE_FONT_INFOEX f = cfi;
+        f.cbSize = sizeof(f);
+        f.dwFontSize.X = 0;  // 宽度交给系统按等宽比例算
+        if (f.dwFontSize.Y <= 0) f.dwFontSize.Y = 16;
+        f.FontFamily = 0;
+        f.FontWeight = FW_NORMAL;
+        wcsncpy(f.FaceName, cands[i], LF_FACESIZE - 1);
+        f.FaceName[LF_FACESIZE - 1] = L'\0';
+        if (SetCurrentConsoleFontEx(hOut, FALSE, &f)) return;
+    }
+}
+
+}  // namespace
+#endif
+
 void Renderer::init() {
 #ifdef _WIN32
     // 控制台以 UTF-8 解释输出字节
@@ -91,6 +124,7 @@ void Renderer::init() {
     SetConsoleCP(CP_UTF8);
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut != INVALID_HANDLE_VALUE) {
+        preferBlockSafeFont(hOut);
         DWORD mode = 0;
         if (GetConsoleMode(hOut, &mode)) {
             mode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;  // 启用 ANSI 转义
