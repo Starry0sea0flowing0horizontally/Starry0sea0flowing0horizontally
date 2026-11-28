@@ -236,13 +236,14 @@ void Game::playFromSave(int slot) {
     std::size_t pc = d.pc;
     // 优先按「label + 偏移」还原位置：剧情改过稿以后，旧存档的裸 pc 会指到别的段落里，
     // 一读档就多冒出一句不相干的台词（比如站在玉佩上却看到「地上积了一层灰尘」）。
-    if (!d.resumeLabel.empty()) {
+    if (!d.resumeLabel.empty() &&
+        script.labels.find(d.resumeLabel) != script.labels.end()) {
         // 存档时若停在某个地图里闲逛，锚点就是那张地图的 label（当前 pc 正好等于锚点）。
         // 此时偏移为 0，读档要直接回到那张地图，而不是把地图节点再跑一遍——
         // 重跑会先打一遍旁白，屏幕上就多出一句不相干的话。
         pc = resolveResume(script, d.resumeLabel, d.resumeOffset);
     } else {
-        // 旧版本存档（没有 resume 行）只有裸 pc。脚本改过稿以后，那个下标会落在
+        // 旧存档没有 resume 行或锚点已从脚本移除时，回退到 pc 最近的干净入口。
         // 半句旁白上（读档时屏幕上就多冒出一句不相干的话）。所以往回退到最近的
         // 段落边界（地图 / 清屏 / 场景标题）——那里一定是干净的入口。
         pc = snapToBoundary(script, pc);
@@ -1078,6 +1079,7 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
                 MenuAct act = systemMenu(script, pc, flags);
                 if (act == MenuAct::Title || act == MenuAct::Quit) return true;
                 if (act == MenuAct::Reload) return false;   // script/pc/flags 已就地更新
+                if (act == MenuAct::Continue) lastDrawnSig.clear();
             }
             // 清晨开场字幕还没读完：回车 / 空格先把字幕收掉（和睡着的夜里一样，只认这两个键）。
             if (n.mapId == "dorm_morning" && subtitle.remainMs > 0 &&
@@ -1403,6 +1405,7 @@ bool Game::runMap(const Node& n, Script& script, std::size_t& pc, Flags& flags) 
             MenuAct act = systemMenu(script, pc, flags);
             if (act == MenuAct::Title || act == MenuAct::Quit) return true;
             if (act == MenuAct::Reload) return false;   // script/pc/flags 已就地更新
+            if (act == MenuAct::Continue) lastDrawnSig.clear();
         }
 
         // 刚才那一步迈进了拱门 / 拐角：切图，runMap 结束
@@ -1617,6 +1620,19 @@ Game::AfterAction Game::afterText(Script& script, std::size_t& pc, Flags& flags)
             MenuAct act = systemMenu(script, pc, flags);
             if (act == MenuAct::Title || act == MenuAct::Quit) return AfterAction::Exit;
             if (act == MenuAct::Reload) return AfterAction::Exit;   // 读档后重跑
+            const Node& current = script.nodes[pc];
+            bodyLines_ = 0;
+            if (current.type == NodeType::Dialogue) {
+                renderer_.printLine(current.speaker,
+                    current.spkColor.empty() ? color::WHITE : current.spkColor.c_str());
+                renderer_.printLine("　　" + current.text,
+                    current.color.empty() ? nullptr : current.color.c_str());
+                bodyLines_ = 2;
+            } else if (current.type == NodeType::Narration) {
+                renderer_.printLine("　　" + current.text,
+                    current.color.empty() ? color::DIM : current.color.c_str());
+                bodyLines_ = 1;
+            }
         } else {
             return AfterAction::Next;
         }
@@ -1726,7 +1742,10 @@ Game::MenuAct Game::systemMenu(Script& script, std::size_t& pc, Flags& flags) {
         } else if (k == input::KEY_DOWN) {
             if (sel + 1 < (outer == 0 ? N : std::size_t(4))) sel++;
         } else if (k == input::KEY_ESC) {
-            if (outer == 0) return MenuAct::Continue;
+            if (outer == 0) {
+                renderer_.clear();
+                return MenuAct::Continue;
+            }
             outer = 0;
             sel = 0;
         } else if (k >= '1' && k <= '9') {
@@ -1765,6 +1784,13 @@ Game::MenuAct Game::systemMenu(Script& script, std::size_t& pc, Flags& flags) {
                             initProfile(flags, false);
                             script = buildChapter(d.chapter);
                             pc = d.pc;
+                            if (!d.resumeLabel.empty() &&
+                                script.labels.find(d.resumeLabel) != script.labels.end()) {
+                                pc = resolveResume(script, d.resumeLabel, d.resumeOffset);
+                            } else {
+                                pc = snapToBoundary(script, pc);
+                            }
+                            if (pc >= script.nodes.size()) pc = 0;
                             skipSavePrompt(script, pc);
                             currentChapter_ = d.chapter;
                             currentScene_ = d.sceneTitle;

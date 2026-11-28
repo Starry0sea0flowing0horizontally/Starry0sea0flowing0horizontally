@@ -1130,6 +1130,10 @@ Script buildPrologue() {
     b.narr("灯还亮着，灯芯剪过，火苗很稳。这一屋子的白天，都要靠它撑到天黑。");
     b.jump("office_plain");
 
+    // 1.0.0 存档锚点；保留无旁白跳转以兼容旧档。
+    b.label("office_cabinet");
+    b.jump("office_plain");
+
     b.label("office_save");       // 记事碑：文书阁的存档点
     b.savePrompt();
     b.jump("office_plain");

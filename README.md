@@ -9,7 +9,7 @@
 >
 > 白麒麟 **四不相** 与灰麒麟 **四不遇**——两个「死不相遇」的灵魂，跨越一万年的执念与守望。
 
-本项目是一个**纯标准 C++（C++23）文字冒险游戏引擎 + 完整可玩的序章「咫尺天涯」**，零第三方依赖，跨平台（Windows / Linux / macOS）。
+本项目是一个**C++23 文字冒险游戏引擎 + 完整可玩的序章「咫尺天涯」**，使用 vcpkg 管理 `libarchive` 依赖，跨平台（Windows / Linux / macOS）。安装了兼容的 Qt 6 Widgets 时会启动白底黑字桌面界面；未检测到 Qt 时仍可使用原有终端界面。
 
 ---
 
@@ -19,75 +19,41 @@
 huazhitumi/
 ├── CMakeLists.txt          # CMake 构建（通用）
 ├── README.md
+├── script/                 # Windows / Linux 构建脚本及说明
+├── include/                # C++头文件
 ├── src/
 │   ├── main.cpp            # 程序入口
 │   ├── config.h            # 颜色、常量、角色配色（全局配置）
-│   ├── input.h/.cpp        # 跨平台按键输入（Windows conio / POSIX termios）
-│   ├── renderer.h/.cpp     # 文本演出（打字机/颜色/居中/清屏）+ 配图接口
+│   ├── input.cpp        # 跨平台按键输入（Windows conio / POSIX termios）
+│   ├── renderer.cpp     # 文本演出（打字机/颜色/居中/清屏）+ 配图接口
 │   ├── script.h            # 剧情脚本数据模型 + 流式构建器
-│   ├── map.h/.cpp          # 可走动探索地图（终端字符俯视图）
-│   ├── save.h/.cpp         # 多槽存档系统（纯文本格式）
-│   ├── game.h/.cpp         # 主循环、标题菜单、存档菜单、剧情状态机
-│   ├── status.h/.cpp       # 角色档案、属性、背包与物品数据
-│   ├── prologue.h/.cpp     # 序章「咫尺天涯」完整剧情脚本
-│   ├── cover_art.h         # 开场字符画数据（tools/cover_art.py 自动生成）
+│   ├── map.cpp          # 可走动探索地图（终端字符俯视图）
+│   ├── save.cpp         # 多槽存档系统（纯文本格式）
+│   ├── game.cpp         # 主循环、标题菜单、存档菜单、剧情状态机
+│   ├── status.cpp       # 角色档案、属性、背包与物品数据
+│   ├── prologue.cpp     # 序章「咫尺天涯」完整剧情脚本
 ├── tools/                  # 配图制作脚本（转字符画，不参与编译）
 ├── assets/images/          # 配图资源（开场原图 + 字符画预览）
-└── saves/                  # 存档目录（运行时自动生成）
 ```
 
 ---
 
 ## 二、编译与运行
 
-> 本项目需要支持 **C++23** 的编译器，以及 [CMake 4.3](https://cmake.org/) 及以上和 [Ninja](https://ninja-build.org/)（Windows 构建脚本使用 Ninja）。中文源码统一采用 **UTF-8 编码**。
+> 本项目需要支持 **C++23** 的编译器，以及 [CMake 4.3](https://cmake.org/) 及以上和 [Ninja](https://ninja-build.org/)（Windows 构建脚本使用 Ninja）。桌面界面需要 Qt 6 Widgets；中文源码统一采用 **UTF-8 编码**。
 
 ### 方式 A：下载预编译包 (推荐)
 
 | 平台 | 下载 |
 | --- | --- |
-| Windows 64 位（MSVC） | [huazhitumi-1.0.0-win64-msvc.zip](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.0/huazhitumi-1.0.0-win64-msvc.zip) |
-| Linux 64 位（GCC） | [huazhitumi-1.0.0-anylinux64-gcc.tar.gz](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.0/huazhitumi-1.0.0-anylinux64-gcc.tar.gz) |
+| Windows 64 位（MSVC） | [huazhitumi-1.0.3-win64-msvc.zip](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.3/huazhitumi-1.0.3-win64-msvc.zip) |
+| Linux 64 位（GCC） | [huazhitumi-1.0.3-anylinux64-gcc.tar.gz](https://github.com/zgteam233/Starry0sea0flowing0horizontally/releases/download/1.0.3/huazhitumi-1.0.3-anylinux64-gcc.tgz) |
 
 下载后解压到任意目录，并从解压目录运行 `huazhitumi.exe`（Windows）或 `./huazhitumi`（Linux）。两份压缩包均包含运行所需的 `assets/` 资源；存档会在首次运行时于解压目录中创建。
 
-### 方式 B：PowerShell 构建脚本
+### 方式 B：构建脚本
 
-在仓库根目录打开 PowerShell：
-
-```powershell
-pwsh .\build.ps1
-```
-
-脚本会清理并重新生成 `build/`，使用 CMake + Ninja 编译 Release 版本。运行：
-
-```powershell
-.\build\huazhitumi.exe
-```
-
-首次使用前，请确认已安装 CMake、Ninja 和支持 C++23 的编译器，并将它们加入 `PATH`。
-
-### 方式 C：手动使用 CMake
-
-```bash
-cmake -S . -B build -G Ninja
-cmake --build build
-```
-
-运行：
-
-- Windows：`.\build\huazhitumi.exe`
-- Linux/macOS：`./build/huazhitumi`
-
-若系统已配置 CMake 可用的编译器，但未安装 Ninja，也可以移除 `-G Ninja`，改由 CMake 根据环境选择默认生成器。
-
-生成与现有 Release 一致格式的压缩包：
-
-```bash
-cpack --config build/CPackConfig.cmake
-```
-
-Windows 会生成 `huazhitumi-1.0.0-win64-msvc.zip`，Linux 会生成 `huazhitumi-1.0.0-anylinux64-gcc.tar.gz`。
+Windows、WSL 和 Linux 的构建方式、`debug/release` 选项及 Windows 编译器选择见 [`script/README.md`](script/README.md)。默认构建类型为 Debug。
 
 ---
 
@@ -174,7 +140,7 @@ Windows 会生成 `huazhitumi-1.0.0-win64-msvc.zip`，Linux 会生成 `huazhitum
 开场画面（序章 · 咫尺天涯）有一张配图，但终端里没法贴 PNG，所以做成了**字符画**：把画直接换算成「上半块 ▀ + 24bit 真彩色」的字符格，一个字符格子表示上下两个像素（前景色画上半、背景色画下半）。
 
 - `assets/images/prologue_cover.png`：开场原图（两只对视的麒麟），这是唯一的一张源图。
-- `src/cover_art.h`：由 `tools/cover_art.py` 生成的字符画数据，提供两个尺寸：
+- `include/cover_art.h`：由 `tools/cover_art.py` 生成的字符画数据，提供两个尺寸：
   - **92 列 × 34 行**（实际表现 92×68 像素）—— 窗口 ≥ 92 列、≥ 37 行时使用；
   - **76 列 × 24 行** —— 窗口装不下大图时自动降级，保证不折行、不滚动。
 - `assets/images/prologue_cover_preview.png`：字符画的实际观感预览（按字符格的 1:2 比例放大）。

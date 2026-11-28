@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+type=debug
+while (($#)); do
+    case "${1,,}" in
+        -t|--type)
+            (($# >= 2)) || { printf 'Missing value for %s (debug|release)\n' "$1" >&2; exit 2; }
+            type="${2,,}"
+            shift 2
+            ;;
+        -h|--help)
+            printf 'Usage: bash script/anylinux64 [-t|--type debug|release]\n'
+            exit 0
+            ;;
+        *)
+            printf 'Unknown option: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+done
+
+case "$type" in
+    debug) cmake_type=Debug ;;
+    release) cmake_type=Release ;;
+    *) printf 'Invalid build type: %s (expected debug or release)\n' "$type" >&2; exit 2 ;;
+esac
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+project_dir="$(cd -- "$script_dir/.." && pwd)"
+build_dir="$project_dir/build/anylinux64/$type"
+
+if [[ -z "${VCPKG_ROOT:-}" || ! -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]]; then
+    printf 'Set VCPKG_ROOT to the Linux vcpkg root before building.\n' >&2
+    exit 1
+fi
+
+rm -rf -- "$build_dir"
+mkdir -p -- "$build_dir"
+cmake -S "$project_dir" -B "$build_dir" -G Ninja -DCMAKE_BUILD_TYPE="$cmake_type"
+cmake --build "$build_dir"

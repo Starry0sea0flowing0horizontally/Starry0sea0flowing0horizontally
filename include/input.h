@@ -50,4 +50,11 @@ std::pair<int, bool> readEvent(int& outX, int& outY);
 // 读取一行文本（用于将来输入姓名等；内部临时恢复行编辑模式）
 std::string readLine();
 
+#ifdef HZ_QT_FRONTEND
+class InputCancelled {};
+void pushKey(int key);
+void pushMouseClick(int x, int y);
+void requestQuit();
+#endif
+
 }  // namespace game::input

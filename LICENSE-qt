@@ -1,0 +1,17 @@
+Qt is available under different licensing options designed
+to accommodate the needs of our various users:
+
+Qt licensed under commercial licenses is appropriate for
+evelopment of proprietary/commercial software where you do
+not want to share any source code with third parties or otherwise
+cannot comply with the terms of the GNU LGPL version 3.
+
+Qt licensed under the GNU Lesser General Public License (LGPL)
+version 3 is appropriate for the development of Qt applications
+provided you can comply with the terms and conditions of the GNU
+LGPL version 3 (or GNU GPL version 3).
+
+Qt components licensed under the Qt Marketplace License Agreement
+are appropriate for the development of Qt applications commonly
+with Qt software components licensed under the commercial or GNU
+LGPL version 3 (or GNU GPL version 3) terms and conditions.

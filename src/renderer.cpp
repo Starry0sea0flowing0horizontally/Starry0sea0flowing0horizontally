@@ -2,6 +2,10 @@
 //  花至荼蘼 —— 文本渲染器实现
 // ============================================================================
 #include "renderer.h"
+
+#ifdef HZ_QT_FRONTEND
+#include "qt_frontend.h"
+#endif
 #include "config.h"
 #include "input.h"
 #include "cover_art.h"
@@ -118,7 +122,10 @@ void preferBlockSafeFont(HANDLE hOut) {
 #endif
 
 void Renderer::init() {
-#ifdef _WIN32
+#ifdef HZ_QT_FRONTEND
+    g_termWidth = kQtDisplayColumns;
+    g_termHeight = kQtDisplayRows;
+#elif defined(_WIN32)
     // 控制台以 UTF-8 解释输出字节
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
@@ -159,7 +166,7 @@ void Renderer::init() {
 //   2. 光标归零，并把窗口滚回最顶上。
 // 这样无论之前打过多少行，屏幕上都不会残留任何旧字。
 void Renderer::clear() {
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(HZ_QT_FRONTEND)
     HANDLE hOut = GetStdHandle(STD_OUTPUT_HANDLE);
     if (hOut != INVALID_HANDLE_VALUE && hOut != nullptr) {
         CONSOLE_SCREEN_BUFFER_INFO csbi;
